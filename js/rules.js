@@ -1174,17 +1174,20 @@
           if (sep !== '–' || hasSpace) badRanges.push(rm[0]);
         }
       }
-      if (badRanges.length) add({
-        category: 'chars', level: 'info', ai: false, blockIndex: i,
-        title: 'Знак в диапазоне чисел',
-        detail: `В диапазоне чисел использовано «${badRanges[0].replace(/\s/g, '␣')}». Между числами в цифровой форме принято тире «–» без пробелов, а не дефис.`,
-        recommend: 'Ставьте тире «–» без пробелов: 1,0–6,0. Дефис и длинное тире между числами не используют.',
-        ref: 'Правила русской типографики (Розенталь; Мильчин–Чельцова), gramota.ru',
-      });
+      if (badRanges.length) {
+        let rc = []; for (const r of badRanges) rc = rc.concat(phraseRanges(b, r));
+        add({
+          category: 'chars', level: 'info', ai: false, blockIndex: i, chars: rc,
+          title: 'Знак в диапазоне чисел',
+          detail: `В диапазоне чисел использовано «${badRanges[0].replace(/\s/g, '␣')}». Между числами в цифровой форме принято тире «–» без пробелов, а не дефис.`,
+          recommend: 'Ставьте тире «–» без пробелов: 1,0–6,0. Дефис и длинное тире между числами не используют.',
+          ref: 'Правила русской типографики (Розенталь; Мильчин–Чельцова), gramota.ru',
+        });
+      }
       // длинное тире
       const emCount = (text.match(/\u2014/g) || []).length;
       if (emCount) add({
-        category: 'ai', level: 'info', ai: true, blockIndex: i,
+        category: 'ai', level: 'info', ai: true, blockIndex: i, chars: phraseRanges(b, '\u2014'),
         title: 'Использовано длинное тире',
         detail: `Длинное тире встречается в абзаце ${emCount} раз(а). Обычно так не пишут вручную.`,
         recommend: 'Используйте короткое тире «–»; в диапазонах чисел без пробелов.',
@@ -1192,7 +1195,7 @@
       });
       // длинное тире вплотную к словам (без пробелов)
       if (/\S\u2014\S/.test(text)) add({
-        category: 'chars', level: 'warning', ai: false, blockIndex: i,
+        category: 'chars', level: 'warning', ai: false, blockIndex: i, chars: phraseRanges(b, '\u2014'),
         title: 'Длинное тире без пробелов',
         detail: 'Длинное тире стоит вплотную к словам.',
         recommend: 'В русском тексте тире между словами отделяют пробелами.',
@@ -1200,7 +1203,7 @@
       });
       // Двойные пробелы
       if (/[^ ] {2,}\S/.test(text)) add({
-        category: 'chars', level: 'info', ai: true, blockIndex: i,
+        category: 'chars', level: 'info', ai: true, blockIndex: i, chars: phraseRanges(b, '  '),
         title: 'Двойные пробелы', detail: 'В тексте подряд идут несколько пробелов.',
         recommend: 'Оставьте один пробел.', ref: 'СТУ 7.5–07–2021, п. 7.3.1',
       });
@@ -1281,6 +1284,9 @@
         recommend: 'Оформляйте запись по ГОСТ Р 7.0.100 (примеры в приложении У СТУ).',
         ref: 'СТУ 7.5–07–2021, п. 7.10.2',
       });
+      // слэши: у книги один «/», у статьи двойной «//»
+      if (cat === 'book' && / \/\/ /.test(t)) add({ category: 'sources', level: 'warning', blockIndex: e.index, title: 'Двойной слэш в описании книги', detail: 'В описании книги использован двойной слэш «//».', recommend: 'Для книги используют один слэш «/».', ref: 'СТУ 7.5–07–2021, п. 7.10.2' });
+      if (cat === 'article' && / \/ /.test(t) && !/ \/\/ /.test(t)) add({ category: 'sources', level: 'warning', blockIndex: e.index, title: 'Нужен двойной слэш «//»', detail: 'В описании статьи использован одиночный слэш «/».', recommend: 'Перед названием источника ставят двойной слэш «//».', ref: 'СТУ 7.5–07–2021, п. 7.10.2' });
     }
   }
 
@@ -1406,22 +1412,42 @@
     }
   }
 
-  // Несоответствия оформления по всему документу.
+  // Несоответствия оформления по всему документу: указываем конкретное место.
   function checkConsistency(blocks, roles, add) {
-    let hyphenRange = 0, endashRange = 0, emRange = 0;
+    let hyphenRange = 0, endashRange = 0;
     let guillemet = 0, straight = 0, curly = 0;
+    let firstHyphen = -1, firstHyphenText = null;
+    let firstBadQuote = -1, firstBadQuoteText = null;
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i]; if (b.kind !== 'p') continue;
       if (roles[i].role === 'title') continue;
       const t = b.text || '';
       let m; const re = /(\d+(?:[.,]\d+)?)\s*([-–—])\s*(\d+(?:[.,]\d+)?)/g;
-      while ((m = re.exec(t))) { if (m[2] === '-') hyphenRange++; else if (m[2] === '–') endashRange++; else emRange++; }
+      while ((m = re.exec(t))) {
+        if (m[2] === '-') { hyphenRange++; if (firstHyphen < 0) { firstHyphen = i; firstHyphenText = m[0]; } }
+        else if (m[2] === '–') endashRange++;
+      }
       guillemet += (t.match(/«/g) || []).length;
-      straight += (t.match(/"/g) || []).length;
-      curly += (t.match(/[“”]/g) || []).length;
+      const sq = (t.match(/"/g) || []).length + (t.match(/[“”]/g) || []).length;
+      straight += (t.match(/"/g) || []).length; curly += (t.match(/[“”]/g) || []).length;
+      if (sq && firstBadQuote < 0) { firstBadQuote = i; firstBadQuoteText = (t.match(/"[^"]{0,30}"|[“”]/) || [''])[0]; }
     }
-    if (hyphenRange > 0 && endashRange > 0) add({ category: 'chars', level: 'info', ai: false, blockIndex: null, title: 'Непоследовательные тире в диапазонах', detail: `Часть диапазонов через дефис (${hyphenRange}), часть через тире (${endashRange}).`, recommend: 'Приведите диапазоны к одному виду: тире без пробелов.', ref: 'Правила русской типографики' });
-    if ((straight > 0 || curly > 0) && guillemet > 0) add({ category: 'chars', level: 'info', ai: false, blockIndex: null, title: 'Разнобой в кавычках', detail: `Встречаются «ёлочки» (${guillemet}) и прямые или английские кавычки (${straight + curly}).`, recommend: 'Используйте единый вид кавычек, в русском тексте «ёлочки».', ref: 'Правила русской типографики' });
+    if (hyphenRange > 0 && endashRange > 0) add({
+      category: 'chars', level: 'info', ai: false, blockIndex: firstHyphen >= 0 ? firstHyphen : null,
+      chars: firstHyphen >= 0 ? phraseRanges(blocks[firstHyphen], firstHyphenText) : undefined,
+      title: 'Непоследовательные тире в диапазонах',
+      detail: `Часть диапазонов через дефис (${hyphenRange}), часть через тире (${endashRange}). Начало несоответствия ниже.`,
+      recommend: 'Приведите все диапазоны к одному виду: тире без пробелов.',
+      ref: 'Правила русской типографики',
+    });
+    if ((straight + curly) > 0 && guillemet > 0) add({
+      category: 'chars', level: 'info', ai: false, blockIndex: firstBadQuote >= 0 ? firstBadQuote : null,
+      chars: firstBadQuote >= 0 && firstBadQuoteText ? phraseRanges(blocks[firstBadQuote], firstBadQuoteText) : undefined,
+      title: 'Разнобой в кавычках',
+      detail: `Встречаются «ёлочки» (${guillemet}) и прямые или английские кавычки (${straight + curly}).`,
+      recommend: 'Используйте единый вид кавычек, в русском тексте «ёлочки».',
+      ref: 'Правила русской типографики',
+    });
   }
 
   // Проверка сокращений: расшифровка при первом упоминании и наличие в списке.

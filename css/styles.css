@@ -264,7 +264,7 @@ html.vt-wave::view-transition-old(root) { animation: none; }
 .stu-rule-lab-v { position: absolute; left: 7px; font-size: 8.5px; color: #8a8a8a; transform: translateY(-5px); }
 
 /* page marks */
-.stu-marked { position: relative; cursor: help; }
+.stu-marked { position: relative; cursor: pointer; }
 .stu-mk-err { border-bottom: 2px solid var(--err); }
 .stu-mk-warn { border-bottom: 2px solid var(--warn); }
 .stu-mk-info { border-bottom: 2px dotted var(--info); }

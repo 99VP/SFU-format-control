@@ -251,7 +251,7 @@
       if (extra.length) { findings = findings.concat(extra); rnd = STURender.renderDocument(doc, res.roles, findings, $('#viewer')); }
     }
     state.findings = findings; state.render = rnd;
-    buildFileMeta(doc); buildFindings(); buildPages(); wireViewerScroll();
+    buildFileMeta(doc); buildFindings(); buildPages(); wireViewerScroll(); wireDocClicks();
     if (name && buf) { saveLast(name, buf, state.docType); saveHistory(name, buf, state.docType); }
   }
 
@@ -268,13 +268,20 @@
   const ORDER = { error: 0, warning: 1, info: 2 };
   function buildFindings() {
     const list = $('#find-list');
+    state.findEls = new Map();
     const counts = { error: 0, warning: 0, info: 0 };
     for (const f of state.findings) counts[f.level] = (counts[f.level] || 0) + 1;
     $('#sum-err').textContent = counts.error; $('#sum-warn').textContent = counts.warning; $('#sum-info').textContent = counts.info;
 
     const items = state.findings
       .filter((f) => state.filter === 'all' || (state.filter === 'ai' ? f.ai : f.level === state.filter))
-      .sort((a, b) => (ORDER[a.level] - ORDER[b.level]) || ((a.page == null ? 999 : a.page) - (b.page == null ? 999 : b.page)));
+      .slice()
+      .sort((a, b) => {
+        const ai = a.blockIndex == null ? 1e9 : a.blockIndex;
+        const bi = b.blockIndex == null ? 1e9 : b.blockIndex;
+        if (ai !== bi) return ai - bi;
+        return ORDER[a.level] - ORDER[b.level];
+      });
 
     if (!items.length) {
       list.innerHTML = '<div class="no-find">' + (state.findings.length ? 'Нет замечаний выбранного уровня.' : 'Замечаний не найдено – документ соответствует проверяемым требованиям СТУ.') + '</div>';
@@ -293,10 +300,29 @@
         '<div class="fi-ref">' + escapeHtml(f.ref || '') + '</div>';
       el.addEventListener('click', () => focusFinding(f));
       el.__finding = f;
+      state.findEls.set(f.id, el);
       frag.appendChild(el);
     }
     list.innerHTML = '';
     list.appendChild(frag);
+  }
+
+  // Клик по подсвеченному месту в документе открывает замечание слева.
+  function wireDocClicks() {
+    const v = $('#viewer');
+    if (!v || v.__clickBound) return; v.__clickBound = true;
+    v.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-block]');
+      if (!el) return;
+      const bi = +el.getAttribute('data-block');
+      const f = state.findings.find((x) => x.blockIndex === bi);
+      if (!f) return;
+      const item = state.findEls && state.findEls.get(f.id);
+      if (item) {
+        item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        item.classList.remove('stu-flash'); void item.offsetWidth; item.classList.add('stu-flash');
+      }
+    });
   }
 
   function focusFinding(f) {

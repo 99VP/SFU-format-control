@@ -334,6 +334,8 @@
     el.id = 'stu-block-' + blockIndex;
     styleParagraphText(el, p);
     const role = ctx.roles && ctx.roles[blockIndex] ? ctx.roles[blockIndex].role : null;
+    const hasTabs = (p.tabs && p.tabs.length) || /\t/.test(p.text || '');
+    if (hasTabs && role !== 'toc') el.style.textAlign = 'left';   // позиции считаем сами, без двойного центрирования
     if (role === 'toc' && /\t/.test(p.text || '')) renderTocParagraph(el, p, blockIndex, ctx);
     else renderRuns(el, p, blockIndex, ctx);
     if (p.isEmpty && !ctx.markers[blockIndex]) { el.style.minHeight = el.style.lineHeight; }

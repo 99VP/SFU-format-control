@@ -370,8 +370,13 @@
     el.className = 'stu-p';
     el.setAttribute('data-block', blockIndex);
     el.id = 'stu-block-' + blockIndex;
-    styleParagraphText(el, p);
     const role = ctx.roles && ctx.roles[blockIndex] ? ctx.roles[blockIndex].role : null;
+    // pre-wrap оставляем только там, где важны пробелы (титул, ведущие пробелы).
+    // У обычного текста он не схлопывает концевые пробелы и строка вылезает
+    // за правое поле.
+    const needsPre = role === 'title' || /^\s/.test(p.text || '');
+    el.style.whiteSpace = needsPre ? 'pre-wrap' : 'normal';
+    styleParagraphText(el, p);
     const hasTabs = (p.tabs && p.tabs.length) || /\t/.test(p.text || '');
     // Центрирование/право без табуляторов отдаём браузеру (как Word), поэтому
     // text-align трогаем только при табуляторах, где позиции считаем сами.

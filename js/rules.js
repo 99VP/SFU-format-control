@@ -180,11 +180,12 @@
         (/\t/.test(text) && /\d\s*$/.test(t)) || /toc|оглавлен/i.test(b.styleName || '')) {
         roles[i] = { role: 'toc' }; continue;
       }
+      // подпись к таблице/рисунку (может идти в одном абзаце с картинкой)
+      const clean = normText(text.replace(/\uFFFC/g, ''));
+      if (/^Таблица\s+[А-ЯA-Z0-9]/i.test(clean)) { roles[i] = { role: 'tableCaption' }; continue; }
+      if (/^Рисунок\s+[А-ЯA-Z0-9]/i.test(clean)) { roles[i] = { role: 'figureCaption' }; continue; }
       // отдельный абзац только с изображением (картинка/формула-картинка)
-      if (b.hasDrawing && normText(text.replace(/\uFFFC/g, '')) === '') { roles[i] = { role: 'image' }; continue; }
-      // подпись к таблице/рисунку
-      if (/^Таблица\s+[А-ЯA-Z0-9]/i.test(t)) { roles[i] = { role: 'tableCaption' }; continue; }
-      if (/^Рисунок\s+[А-ЯA-Z0-9]/i.test(t)) { roles[i] = { role: 'figureCaption' }; continue; }
+      if (b.hasDrawing && clean === '') { roles[i] = { role: 'image' }; continue; }
       if (/^(Продолжение|Окончание)\s+(таблицы|приложения)/i.test(t)) { roles[i] = { role: 'continuation' }; continue; }
       // заголовок раздела/подраздела/пункта
       const m = t.match(/^(\d+(?:\.\d+){0,4})\.?\s+(.*)$/);
@@ -633,6 +634,24 @@
               ref: 'СТУ 7.5–07–2021, п. 7.4.3',
             });
           }
+        }
+      }
+      // Позиция перечисления продолжает фразу и пишется со строчной буквы
+      // (кроме имён собственных и аббревиатур).
+      if (r.role === 'list' || r.role === 'manualList') {
+        const t = normText(b.text);
+        const noM = t.replace(/^\s*(?:[-–—•·◦○▪∙*]|\d{1,3}[.)]|[а-яёa-z][.)])\s+/, '');
+        const w = noM.match(/^([А-ЯЁ][а-яё\-]+)/);
+        if (w) {
+          const idx = (b.text || '').indexOf(w[1]);
+          add({
+            category: 'list', level: 'warning', blockIndex: i,
+            chars: idx >= 0 ? rangeAt(b, idx, idx + w[1].length) : undefined,
+            title: 'Позиция перечисления с прописной буквы',
+            detail: `Позиция начинается со слова «${w[1]}».`,
+            recommend: 'Позиции перечисления продолжают фразу и пишутся со строчной буквы (кроме имён собственных и аббревиатур).',
+            ref: 'СТУ 7.5–07–2021, п. 7.4.3',
+          });
         }
       }
     }
@@ -1680,20 +1699,20 @@
       // рисунок: перед картинкой и после подписи
       if (b.kind === 'p' && (role.role === 'image')) {
         const prev = blocks[i - 1];
-        if (prev && prev.kind === 'p' && !prev.isEmpty && Math.max(spAfter(prev), spBefore(b)) < 200) add({ category: 'figure', level: 'warning', blockIndex: i, title: 'Нет пустой строки перед рисунком', detail: 'Перед рисунком нет пустой строки.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку сверху.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
+        if (prev && prev.kind === 'p' && !prev.isEmpty && Math.max(spAfter(prev), spBefore(b)) < 200) add({ category: 'figure', level: 'warning', blockIndex: i, pageRel: [i - 1, i], title: 'Нет пустой строки перед рисунком', detail: 'Перед рисунком нет пустой строки.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку сверху.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
         const cap = (roles[i + 1] && roles[i + 1].role === 'figureCaption') ? i + 1 : null;
         const afterIdx = cap != null ? cap + 1 : i + 1;
         const nx = blocks[afterIdx];
-        if (nx && nx.kind === 'p' && !nx.isEmpty && Math.max(spAfter(blocks[afterIdx - 1]), spBefore(nx)) < 200) add({ category: 'figure', level: 'warning', blockIndex: cap != null ? cap : i, title: 'Нет пустой строки после рисунка', detail: 'После подписи рисунка сразу идёт текст.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку снизу.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
+        if (nx && nx.kind === 'p' && !nx.isEmpty && Math.max(spAfter(blocks[afterIdx - 1]), spBefore(nx)) < 200) add({ category: 'figure', level: 'warning', blockIndex: cap != null ? cap : i, pageRel: [afterIdx - 1, afterIdx], title: 'Нет пустой строки после рисунка', detail: 'После подписи рисунка сразу идёт текст.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку снизу.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
       }
       // таблица: перед подписью и после таблицы
       if (b.kind === 'table') {
         const capIdx = (i - 1 >= 0 && roles[i - 1].role === 'tableCaption') ? i - 1 : null;
         const beforeIdx = capIdx != null ? capIdx - 1 : i - 1;
         const pb = blocks[beforeIdx];
-        if (pb && pb.kind === 'p' && !pb.isEmpty && Math.max(spAfter(pb), capIdx != null ? spBefore(blocks[capIdx]) : spBefore(b)) < 200) add({ category: 'table', level: 'warning', blockIndex: capIdx != null ? capIdx : i, title: 'Нет пустой строки перед таблицей', detail: 'Перед таблицей нет пустой строки.', recommend: 'Отделяйте таблицу от текста интервалом в одну строку.', ref: 'СТУ 7.5–07–2021, п. 7.7.2' });
+        if (pb && pb.kind === 'p' && !pb.isEmpty && Math.max(spAfter(pb), capIdx != null ? spBefore(blocks[capIdx]) : spBefore(b)) < 200) add({ category: 'table', level: 'warning', blockIndex: capIdx != null ? capIdx : i, pageRel: [beforeIdx, capIdx != null ? capIdx : i], title: 'Нет пустой строки перед таблицей', detail: 'Перед таблицей нет пустой строки.', recommend: 'Отделяйте таблицу от текста интервалом в одну строку.', ref: 'СТУ 7.5–07–2021, п. 7.7.2' });
         const nx = blocks[i + 1];
-        if (nx && nx.kind === 'p' && !nx.isEmpty && spAfter(b) < 200) add({ category: 'table', level: 'warning', blockIndex: i, title: 'Нет пустой строки после таблицы', detail: 'После таблицы сразу идёт текст.', recommend: 'Отделяйте таблицу от текста интервалом в одну строку.', ref: 'СТУ 7.5–07–2021, п. 7.7.2' });
+        if (nx && nx.kind === 'p' && !nx.isEmpty && spAfter(b) < 200) add({ category: 'table', level: 'warning', blockIndex: i, pageRel: [i, i + 1], title: 'Нет пустой строки после таблицы', detail: 'После таблицы сразу идёт текст.', recommend: 'Отделяйте таблицу от текста интервалом в одну строку.', ref: 'СТУ 7.5–07–2021, п. 7.7.2' });
       }
     }
   }
@@ -1898,6 +1917,17 @@
       title = title.replace(/[\t]/g, ' ').replace(/[\s.\u2026]+\d{0,4}\s*$/, '').trim();
       const fl = b.ind ? b.ind.firstLine : null;
       entries.push({ index: i, number: number, depth: depth, page: page, title: title, firstLine: fl });
+    }
+    // В содержании заголовки записывают с первой прописной буквы, остальные строчные.
+    for (const e of entries) {
+      const t = e.title || '';
+      if (t.length > 3 && /[А-ЯЁ]/.test(t) && !/[а-яё]/.test(t)) add({
+        category: 'structure', level: 'warning', blockIndex: e.index,
+        title: 'Заголовок в содержании прописными буквами',
+        detail: `«${t}» набран прописными буквами.`,
+        recommend: 'В содержании заголовки записывают строчными буквами, с первой прописной (аббревиатуры сохраняют написание).',
+        ref: 'СТУ 7.5–07–2021, п. 6.4.2',
+      });
     }
     // отступы по уровням: подраздел на два знака глубже раздела, пункт ещё на два
     for (const e of entries) {

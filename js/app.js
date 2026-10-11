@@ -245,11 +245,15 @@
     state.roles = res.roles; state.titleEnd = res.titleEnd; state.tocEntries = res.tocEntries || [];
     let findings = res.findings.slice();
     let rnd = STURender.renderDocument(doc, res.roles, findings, $('#viewer'));
+    const extra = [];
     if (STURules.crossCheckToc && res.tocEntries && res.tocEntries.length) {
-      const extra = [];
       STURules.crossCheckToc(doc, res.roles, res.tocEntries, rnd.pageForBlock, (f) => extra.push(f));
-      if (extra.length) { findings = findings.concat(extra); rnd = STURender.renderDocument(doc, res.roles, findings, $('#viewer')); }
     }
+    if (extra.length) findings = findings.concat(extra);
+    // Убираем замечания про пустую строку, если объект и текст оказались на разных листах.
+    const beforeN = findings.length;
+    findings = findings.filter((f) => !f.pageRel || rnd.pageForBlock[f.pageRel[0]] === rnd.pageForBlock[f.pageRel[1]]);
+    if (extra.length || findings.length !== beforeN) rnd = STURender.renderDocument(doc, res.roles, findings, $('#viewer'));
     state.findings = findings; state.render = rnd;
     buildFileMeta(doc); buildFindings(); buildPages(); wireViewerScroll(); wireDocClicks();
     if (name && buf) { saveLast(name, buf, state.docType); saveHistory(name, buf, state.docType); }

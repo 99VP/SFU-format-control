@@ -60,10 +60,31 @@
     }
   }
 
+  // В содержании: заголовок делаем «с первой прописной, остальные строчные».
+  function fixTocCase(p) {
+    const runs = p.getElementsByTagName('w:r');
+    const titleT = []; let seenTab = false;
+    for (let i = 0; i < runs.length; i++) {
+      if (child(runs[i], 'tab')) seenTab = true;
+      if (seenTab) continue;
+      const t = runs[i].getElementsByTagName('w:t')[0];
+      if (t) titleT.push(t);
+    }
+    const full = titleT.map((t) => t.textContent).join('');
+    if (full.length <= 3) return;
+    if (!/[А-ЯЁ]/.test(full) || /[а-яё]/.test(full)) return;
+    let s = full.toLowerCase();
+    const idx = s.search(/[а-яёa-z]/);
+    if (idx >= 0) s = s.slice(0, idx) + s[idx].toUpperCase() + s.slice(idx + 1);
+    let pos = 0;
+    for (const t of titleT) { const len = t.textContent.length; t.textContent = s.slice(pos, pos + len); pos += len; }
+  }
+
   function fixParagraph(p, role, o) {
     const a = roleOptions(role, o);
     for (const r of p.getElementsByTagName('w:r')) fixRun(r, a);
     if (o.emph && a.clean) clearEmphasis(p);
+    if (o.toc && role === 'toc') fixTocCase(p);
     const pPr = ensure(p, 'pPr', null, true);
     if (a.align) setW(ensure(pPr, 'jc', PPR_ORDER), 'val', 'both');
     if (a.indent) {

@@ -72,7 +72,26 @@ try {
       const gone = res.findings.filter((f) => !keys.has(f.title + '|' + (f.blockIndex == null ? '' : f.blockIndex)));
       log('исчезло замечаний: ' + gone.length);
       gone.slice(0, 8).forEach((f) => log('   было: ' + f.title + (f.blockIndex == null ? '' : ' (b' + f.blockIndex + ')')));
+      let tn = 0;
+      for (let bi = 0; bi < doc2.blocks.length && tn < 10; bi++) {
+        if (res2.roles[bi] && res2.roles[bi].role === 'toc' && doc2.blocks[bi].kind === 'p') { log('   TOC после правки: ' + JSON.stringify((doc2.blocks[bi].text || '').slice(0, 45))); tn++; }
+      }
     } catch (e) { log('FIX ERROR: ' + (e && e.message) + '\n' + (e && e.stack || '')); }
+  }
+  const overDbg = new URLSearchParams(location.search).get('over');
+  if (overDbg) {
+    const pgFrom = +(overDbg.split(',')[0]) || 1;
+    rnd.pages.forEach(function (pg, i) {
+      if (i + 1 !== pgFrom) return;
+      const fr = pg.flow.getBoundingClientRect();
+      log('ЛИСТ ' + (i + 1) + ' flow: left=' + Math.round(fr.left) + ' right=' + Math.round(fr.right) + ' width=' + Math.round(fr.width));
+      pg.flow.querySelectorAll('.stu-p').forEach(function (p) {
+        const pr = p.getBoundingClientRect();
+        if (pr.right - fr.right > 1 || p.scrollWidth - p.clientWidth > 1) {
+          log('  перелив b' + p.getAttribute('data-block') + ' clientW=' + p.clientWidth + ' scrollW=' + p.scrollWidth + ' right-edge=' + Math.round(pr.right - fr.right) + ' jc=' + getComputedStyle(p).textAlign + ' | ' + JSON.stringify((p.textContent || '').slice(0, 40)));
+        }
+      });
+    });
   }
   const dump = new URLSearchParams(location.search).get('dump');
   if (dump) {

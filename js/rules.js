@@ -73,6 +73,21 @@
     return forms[2];
   }
   function lvlFromNumber(num) { return num.split('.').length; } // "1.2.3" → 3
+  // Читаемое имя маркера перечисления (символы Symbol показываем словами).
+  function markerName(t) {
+    if (!t) return 'без символа';
+    const m = t.replace(/[\uF0A7\uF0B7]/g, '\u2022');
+    if (/\u2022/.test(m)) return 'кружок';
+    if (/\u25CF/.test(m)) return 'жирный круг';
+    if (/\u25AA/.test(m)) return 'квадрат';
+    if (/\u25E6/.test(m)) return 'маленький кружок';
+    if (/[*]/.test(m)) return 'звёздочка';
+    if (/\u00b7/.test(m)) return 'средняя точка';
+    if (/[\d]/.test(m)) return 'цифра';
+    if (/[–—\-]/.test(m)) return 'дефис';
+    if (/[A-Za-zА-Яа-я]/.test(m)) return 'буква «' + m + '»';
+    return 'символ «' + t + '»';
+  }
 
   // Система координат страниц (без пагинации движком браузера):
   function computeForcedPageStarts(doc) {
@@ -105,6 +120,13 @@
     // Титульный лист это одна страница: ориентируемся на первый разрыв страницы.
     const starts = [...forcedPageStarts].filter((i) => i > 0).sort((a, b) => a - b);
     let end = starts.length ? starts[0] : null;
+    // Первый структурный заголовок основной части всегда означает конец титула.
+    let structStart = null;
+    for (let i = 0; i < blocks.length; i++) {
+      const t = (blocks[i].text || '').slice(0, 80).trim().toUpperCase().replace(/[.:]+$/, '');
+      if (/^(РЕФЕРАТ|АННОТАЦИЯ|СОДЕРЖАНИЕ|ВВЕДЕНИЕ)$/.test(t)) { structStart = i; break; }
+    }
+    if (structStart != null) end = (end == null ? structStart : Math.min(end, structStart));
     if (end == null) {
       // разрыва нет: определяем титул по содержимому первых строк
       const MARK = /СИБИРСКИЙ ФЕДЕРАЛЬНЫЙ|МИНИСТЕРСТВ|ФЕДЕРАЛЬНОЕ ГОСУДАРСТВЕННОЕ|ИНСТИТУТ|КАФЕДРА|УТВЕРЖДАЮ|КРАСНОЯРСК|РУКОВОДИТЕЛЬ|СТУДЕНТ|ПОДПИСЬ|ГРУПП|20\d\d/;
@@ -585,7 +607,7 @@
             add({
               category: 'list', level: 'warning', blockIndex: i,
               title: 'Маркер перечисления не дефис',
-              detail: `Маркер перечисления «${lvl.lvlText}».`,
+              detail: `Маркер перечисления: ${markerName(lvl.lvlText)}.`,
               recommend: 'Перед каждой позицией перечисления ставьте дефис (тире) «–».',
               ref: 'СТУ 7.5–07–2021, п. 7.4.3',
             });

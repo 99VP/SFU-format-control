@@ -276,7 +276,17 @@
       let cx = null, cy = null;
       const ext = g.getElementsByTagName('wp:extent')[0];
       if (ext) { cx = +ext.getAttribute('cx'); cy = +ext.getAttribute('cy'); }
-      parts.push({ type: 'drawing', embed, cx, cy });
+      // Плавающий рисунок (anchor) не должен раздвигать строку, как в Word.
+      let anchor = false, offH = null, offV = null, relH = null, relV = null;
+      const anc = g.getElementsByTagName('wp:anchor')[0];
+      if (anc) {
+        anchor = true;
+        const ph = anc.getElementsByTagName('wp:positionH')[0];
+        const pv = anc.getElementsByTagName('wp:positionV')[0];
+        if (ph) { relH = ph.getAttribute('relativeFrom'); const oh = ph.getElementsByTagName('wp:posOffset')[0]; if (oh) offH = (+oh.textContent) / 914400 * 96; }
+        if (pv) { relV = pv.getAttribute('relativeFrom'); const ov = pv.getElementsByTagName('wp:posOffset')[0]; if (ov) offV = (+ov.textContent) / 914400 * 96; }
+      }
+      parts.push({ type: 'drawing', embed, cx, cy, anchor, offH, offV, relH, relV });
     }
     let text = '';
     for (const p of parts) {

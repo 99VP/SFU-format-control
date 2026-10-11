@@ -139,12 +139,16 @@
     cursor.x = stop;
   }
 
-  function appendDrawing(container, part, ctx) {
+  function appendDrawing(container, part, ctx, blockIndex) {
     let src = null;
     if (part.embed && ctx.doc.rels && ctx.doc.media) {
       const rel = ctx.doc.rels[part.embed];
       if (rel) { src = ctx.doc.media['media/' + rel.split('/').pop()] || ctx.doc.media[rel]; }
     }
+    // Плавающий рисунок на титульном листе выводим вне потока, иначе он
+    // раздвигает строку и последняя строка титула уезжает на другой лист.
+    const role = ctx.roles && ctx.roles[blockIndex] ? ctx.roles[blockIndex].role : null;
+    const floating = part.anchor && role === 'title';
     if (src) {
       const img = document.createElement('img');
       img.src = src; img.className = 'stu-img';
@@ -159,9 +163,21 @@
       if (wpx) img.style.width = wpx + 'px';
       else img.style.maxWidth = limit + 'px';
       if (hpx) img.style.height = hpx + 'px';
+      if (floating) {
+        img.style.position = 'absolute';
+        img.style.left = Math.max(0, part.offH != null ? part.offH : 0) + 'px';
+        img.style.top = Math.max(-8, part.offV != null ? part.offV : 0) + 'px';
+        if (container.style.position !== 'relative') container.style.position = 'relative';
+      }
       container.appendChild(img);
     } else {
       const ph = document.createElement('span'); ph.className = 'stu-img-ph'; ph.textContent = '\u25A3 рисунок';
+      if (floating) {
+        ph.style.position = 'absolute';
+        ph.style.left = Math.max(0, part.offH != null ? part.offH : 0) + 'px';
+        ph.style.top = Math.max(-8, part.offV != null ? part.offV : 0) + 'px';
+        if (container.style.position !== 'relative') container.style.position = 'relative';
+      }
       container.appendChild(ph);
     }
   }
@@ -199,7 +215,7 @@
     if (run.size) span.style.fontSize = PT(run.size) + 'px';
     if (run.bold) span.style.fontWeight = '700';
     if (run.italic) span.style.fontStyle = 'italic';
-    if (run.underline) span.style.textDecoration = 'underline';
+    if (run.underline && !ctx._tocMode) span.style.textDecoration = 'underline';
     if (run.color && /^[0-9a-fA-F]{6}$/.test(run.color)) span.style.color = '#' + run.color;
     if (run.caps) span.style.textTransform = 'uppercase';
     const marks = ctx.runMarks[blockIndex];
@@ -309,7 +325,7 @@
     } else if (part.type === 'break') {
       container.appendChild(document.createElement('br')); cursor.x = 0;
     } else if (part.type === 'drawing') {
-      appendDrawing(container, part, ctx);
+      appendDrawing(container, part, ctx, blockIndex);
     }
   }
 
@@ -317,6 +333,7 @@
   function renderTocParagraph(el, p, blockIndex, ctx) {
     el.classList.add('stu-toc');
     ctx._curPara = p;
+    const prevTocMode = ctx._tocMode; ctx._tocMode = true;   // в содержании не подчёркиваем
     const ind = p.ind || {};
     el.style.marginLeft = TW((ind.left || 0) + (ind.firstLine || 0)) + 'px';
     if (ind.right) el.style.marginRight = TW(ind.right) + 'px';
@@ -345,6 +362,7 @@
         el.appendChild(lead);
       }
     });
+    ctx._tocMode = prevTocMode;
   }
 
   function buildParagraph(p, blockIndex, ctx) {
@@ -557,6 +575,11 @@
 
     const forcedPageStarts = global.STURules.computeForcedPageStarts(doc);
     const items = makeItems(doc, forcedPageStarts);
+    // Каждый структурный элемент начинают с новой страницы (СТУ, п. 6.1).
+    for (const it of items) {
+      const r = roles[it.indices[0]];
+      if (r && r.role === 'structural') it.forcedBefore = true;
+    }
     const pages = [];
     const pageForBlock = {};
     const blockEls = {};
@@ -634,7 +657,11 @@
       const hadContent = cur.flow.childElementCount > 0;
       const group = nodes.length > 1;
       for (const n of nodes) cur.flow.appendChild(n.node);
-      if (cur.flow.scrollHeight > cur.textH + 1) {
+      // Титульный лист не разрываем: допускаем небольшой перелив (иначе
+      // последняя строка «уезжает» на следующий лист из-за расхождения в метриках).
+      const firstRole = roles && roles[firstIdx] ? roles[firstIdx].role : null;
+      const tol = firstRole === 'title' ? 20 : 1;
+      if (cur.flow.scrollHeight > cur.textH + tol) {
         // одиночный абзац: переносим часть текста на следующую страницу, как Word
         if (!group && nodes[0].node.tagName === 'P') {
           const idx = nodes[0].idx;

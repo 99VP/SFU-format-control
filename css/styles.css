@@ -150,7 +150,10 @@ html.vt-wave::view-transition-old(root) { animation: none; }
 @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 var(--accent-soft)} 50%{box-shadow:0 0 0 6px var(--accent-soft)} }
 
 /* --------------------------------------------------------------- workspace */
-.workspace { display: none; flex: 1 1 auto; min-height: 0; grid-template-columns: 350px 1fr 230px; transition: grid-template-columns .25s ease; }
+.workspace {
+  display: none; flex: 1 1 auto; min-height: 0; grid-template-columns: 350px 1fr 230px;
+  transition: grid-template-columns .34s cubic-bezier(.22, 1, .36, 1);
+}
 .workspace.on { display: grid; }
 .workspace.left-collapsed { grid-template-columns: 46px 1fr 230px; }
 .workspace.right-collapsed { grid-template-columns: 350px 1fr 46px; }
@@ -162,18 +165,26 @@ html.vt-wave::view-transition-old(root) { animation: none; }
   padding: 11px 14px; border-bottom: 1px solid var(--line); font-weight: 700; font-size: 13px;
   letter-spacing: .3px; text-transform: uppercase; color: var(--muted); flex: 0 0 auto;
   display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; user-select: none;
+  transition: padding .34s cubic-bezier(.22, 1, .36, 1);
 }
 .panel-head:hover { background: var(--bg3); }
+.panel-title {
+  display: inline-block; white-space: nowrap; overflow: hidden; max-width: 240px; vertical-align: middle;
+  transition: max-width .34s cubic-bezier(.22, 1, .36, 1), opacity .24s ease;
+}
 .panel-toggle {
   border: none; background: transparent; color: var(--muted); cursor: pointer;
   font-size: 18px; line-height: 1; padding: 0 6px; border-radius: 7px; font-weight: 700;
+  transition: background .2s, color .2s;
 }
 .panel-toggle:hover { background: var(--bg); color: var(--text); }
-.panel.collapsed .panel-body { display: none; }
-.panel.collapsed .panel-head { flex-direction: column; align-items: center; justify-content: flex-start; gap: 10px; padding: 9px 4px; height: 100%; }
-.panel.collapsed .panel-title { writing-mode: vertical-rl; }
-.panel.left.collapsed .panel-title { transform: rotate(180deg); }
-.panel-body { overflow: auto; min-height: 0; flex: 1 1 auto; }
+.panel-body {
+  overflow: auto; min-height: 0; flex: 1 1 auto;
+  transition: opacity .3s ease, transform .34s cubic-bezier(.22, 1, .36, 1);
+}
+.panel.collapsed .panel-body { opacity: 0; pointer-events: none; overflow: hidden; transform: scale(.97); }
+.panel.collapsed .panel-title { max-width: 0; opacity: 0; }
+.panel.collapsed .panel-head { justify-content: center; padding-left: 4px; padding-right: 4px; }
 
 .summary { display: flex; gap: 8px; padding: 14px 14px 6px; }
 .sum-card { flex: 1; border: 1px solid var(--line); border-radius: 13px; padding: 10px 8px; text-align: center; background: var(--bg); }

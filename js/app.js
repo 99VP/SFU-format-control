@@ -208,21 +208,11 @@
       syncTypeChips();
       setSteps(2, 58); await sleep(150);
       const res = STURules.runChecks(doc, state.docType);
-      state.roles = res.roles;
-      state.findings = res.findings;
-      state.titleEnd = res.titleEnd;
       setSteps(3, 82); await sleep(150);
       showWorkspace();
       $('#topfile').textContent = name;
-      const rnd = STURender.renderDocument(doc, res.roles, res.findings, $('#viewer'));
-      state.render = rnd;
-      buildFileMeta(doc);
+      finishRender(doc, res, name, buf);
       setSteps(4, 100); await sleep(200);
-      buildFindings();
-      buildPages();
-      wireViewerScroll();
-      saveLast(name, buf, state.docType);
-      saveHistory(name, buf, state.docType);
     } catch (err) {
       console.error(err);
       alert('Не удалось обработать файл.\n' + (err && err.message ? err.message : err));
@@ -248,20 +238,27 @@
     document.querySelectorAll('#type-chips .type-chip').forEach((x) => x.classList.toggle('active', x.getAttribute('data-type') === state.docType));
   }
 
+  // Построить развёртку, досчитать проверки содержания по страницам, собрать панели.
+  function finishRender(doc, res, name, buf) {
+    state.roles = res.roles; state.titleEnd = res.titleEnd;
+    let findings = res.findings.slice();
+    let rnd = STURender.renderDocument(doc, res.roles, findings, $('#viewer'));
+    if (STURules.crossCheckToc && res.tocEntries && res.tocEntries.length) {
+      const extra = [];
+      STURules.crossCheckToc(doc, res.roles, res.tocEntries, rnd.pageForBlock, (f) => extra.push(f));
+      if (extra.length) { findings = findings.concat(extra); rnd = STURender.renderDocument(doc, res.roles, findings, $('#viewer')); }
+    }
+    state.findings = findings; state.render = rnd;
+    buildFileMeta(doc); buildFindings(); buildPages(); wireViewerScroll();
+    if (name && buf) { saveLast(name, buf, state.docType); saveHistory(name, buf, state.docType); }
+  }
+
   // Перепроверить текущий документ (например, после смены вида вручную).
   function rerun() {
     if (!state.doc || !state.buffer) return;
     try {
       const res = STURules.runChecks(state.doc, state.docType);
-      state.roles = res.roles; state.findings = res.findings;
-      state.titleEnd = res.titleEnd;
-      const rnd = STURender.renderDocument(state.doc, res.roles, res.findings, $('#viewer'));
-      state.render = rnd;
-      buildFileMeta(state.doc);
-      buildFindings();
-      buildPages();
-      wireViewerScroll();
-      saveLast(state.fileName, state.buffer, state.docType);
+      finishRender(state.doc, res, state.fileName, state.buffer);
     } catch (e) { console.error(e); }
   }
 
@@ -406,18 +403,9 @@
       if (det2 && det2.type && !state.manualType) state.docType = det2.type;
       syncTypeChips();
       const res = STURules.runChecks(doc, state.docType);
-      state.roles = res.roles; state.findings = res.findings;
-      state.titleEnd = res.titleEnd;
       showWorkspace();
       $('#topfile').textContent = name;
-      const rnd = STURender.renderDocument(doc, res.roles, res.findings, $('#viewer'));
-      state.render = rnd;
-      buildFileMeta(doc);
-      buildFindings();
-      buildPages();
-      wireViewerScroll();
-      saveLast(name, buf, state.docType);
-      saveHistory(name, buf, state.docType);
+      finishRender(doc, res, name, buf);
     } catch (e) { console.error(e); document.title = 'ОШИБКА: ' + e.message; }
   }
 

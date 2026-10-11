@@ -627,6 +627,7 @@
     checkReferencesAndSources(doc, blocks, roles, presentKeys, add);
     checkAbbreviations(blocks, roles, add);
     checkAppendices(blocks, roles, forcedPageStarts, add);
+    const tocEntries = parseToc(blocks, roles, add);
 
     // ==================================== Рамка и основная надпись (ДП/КП)
     if (docType === 'diplom' || docType === 'kursovaya') {
@@ -639,7 +640,7 @@
       });
     }
 
-    return { findings, roles, forcedPageStarts, titleEnd };
+    return { findings, roles, forcedPageStarts, titleEnd, tocEntries };
   }
 
   function jcName(jc) {
@@ -1153,8 +1154,16 @@
         category: 'chars', level: 'info', ai: false, blockIndex: i,
         title: 'Знак в диапазоне чисел',
         detail: `В диапазоне чисел использовано «${badRanges[0].replace(/\s/g, '␣')}». Между числами в цифровой форме принято тире «–» без пробелов, а не дефис.`,
-        recommend: 'Ставьте тире «–» без пробелов: 1,0–6,0. Дефис – орфографический знак, между числами не используется.',
+        recommend: 'Ставьте тире «–» без пробелов: 1,0–6,0. Дефис и длинное тире между числами не используют.',
         ref: 'Правила русской типографики (Розенталь; Мильчин–Чельцова), gramota.ru',
+      });
+      // длинное тире вплотную к словам (без пробелов)
+      if (/\S\u2014\S/.test(text)) add({
+        category: 'chars', level: 'warning', ai: false, blockIndex: i,
+        title: 'Длинное тире без пробелов',
+        detail: 'Длинное тире стоит вплотную к словам.',
+        recommend: 'В русском тексте тире между словами отделяют пробелами.',
+        ref: 'Правила русской типографики',
       });
       // Двойные пробелы
       if (/[^ ] {2,}\S/.test(text)) add({
@@ -1494,7 +1503,73 @@
   // --------------------------------------------------------------- title page
   // Титульный лист не проверяем: он служит только для определения вида работы.
 
-  global.STURules = { runChecks, classify, DOC_REQUIREMENTS, STRUCTURAL, computeForcedPageStarts, detectDocType };
+  // ------------------------------------------------------------ содержание
+  // Отступы по уровням (п. 6.4.4) и присутствие разделов в содержании (п. 6.4.2).
+  function parseToc(blocks, roles, add) {
+    let start = -1, end = blocks.length;
+    for (let i = 0; i < blocks.length; i++) {
+      if (roles[i].role === 'structural' && roles[i].structKey === 'soderzhanie') { start = i; continue; }
+      if (start >= 0 && roles[i].role === 'structural') { end = i; break; }
+    }
+    const entries = [];
+    if (start < 0) return entries;
+    for (let i = start + 1; i < end; i++) {
+      if (roles[i].role !== 'toc') continue;
+      const b = blocks[i]; const t = normText(b.text); if (!t) continue;
+      const numM = t.match(/^(\d+(?:\.\d+)*)/);
+      const number = numM ? numM[1] : null;
+      const depth = number ? number.split('.').length : 1;
+      const pgM = t.match(/(\d{1,4})\s*$/);
+      const page = pgM ? +pgM[1] : null;
+      let title = t;
+      if (number) title = title.slice(number.length);
+      title = title.replace(/[\t]/g, ' ').replace(/[\s.\u2026]+\d{0,4}\s*$/, '').trim();
+      const fl = b.ind ? b.ind.firstLine : null;
+      entries.push({ index: i, number: number, depth: depth, page: page, title: title, firstLine: fl });
+    }
+    // отступы по уровням: подраздел на два знака глубже раздела, пункт ещё на два
+    for (const e of entries) {
+      if (e.depth < 2) continue;
+      const expected = (e.depth - 1) * 200;   // примерно два знака на уровень
+      const fl = e.firstLine == null ? 0 : e.firstLine;
+      if (fl < expected * 0.4) add({ category: 'structure', level: 'warning', blockIndex: e.index, title: 'Нет отступа в содержании', detail: `Строка «${e.title}» уровня ${e.depth} в содержании без отступа.`, recommend: 'Номера и заголовки подразделов приводят после абзацного отступа (два знака), пунктов ещё на два знака глубже.', ref: 'СТУ 7.5–07–2021, п. 6.4.4' });
+    }
+    // присутствие разделов в содержании
+    const tocNums = new Set(entries.map((e) => e.number).filter(Boolean));
+    const tocTitles = new Set(entries.map((e) => e.title.toUpperCase()));
+    const KEY = { referat: 1, vvedenie: 1, zaklyuchenie: 1, istochniki: 1, prilozheniya: 1 };
+    for (let i = 0; i < blocks.length; i++) {
+      const r = roles[i];
+      if (r.role === 'heading' && r.number && !tocNums.has(r.number)) add({ category: 'structure', level: 'warning', blockIndex: i, title: 'Раздел не указан в содержании', detail: `Заголовок «${r.number} ${r.title}» отсутствует в содержании.`, recommend: 'Включите раздел в содержание.', ref: 'СТУ 7.5–07–2021, п. 6.4.2' });
+      if (r.role === 'structural' && KEY[r.structKey] && !tocTitles.has(normText(blocks[i].text).toUpperCase())) add({ category: 'structure', level: 'info', blockIndex: i, title: 'Раздел не указан в содержании', detail: `«${normText(blocks[i].text)}» отсутствует в содержании.`, recommend: 'Включите элемент в содержание.', ref: 'СТУ 7.5–07–2021, п. 6.4.2' });
+    }
+    return entries;
+  }
+
+  // Сверка номеров страниц из содержания с реальным началом раздела (по развёртке).
+  function crossCheckToc(doc, roles, tocEntries, pageForBlock, add) {
+    if (!tocEntries || !tocEntries.length) return;
+    const blocks = doc.blocks;
+    const byNum = {}, byTitle = {};
+    for (let i = 0; i < blocks.length; i++) {
+      const r = roles[i];
+      if (r.role === 'heading' && r.number) byNum[r.number] = i;
+      if (r.role === 'structural') byTitle[normText(blocks[i].text).toUpperCase()] = i;
+    }
+    for (const e of tocEntries) {
+      if (!e.page) continue;
+      let bi = null;
+      if (e.number != null && byNum[e.number] != null) bi = byNum[e.number];
+      else if (e.title && byTitle[e.title.toUpperCase()] != null) bi = byTitle[e.title.toUpperCase()];
+      if (bi == null) continue;
+      const p = pageForBlock[bi];
+      if (p == null) continue;
+      const real = p + 1;
+      if (real !== e.page) add({ category: 'structure', level: 'warning', blockIndex: e.index, title: 'Страница в содержании не совпадает', detail: `В содержании у «${e.title}» указана страница ${e.page}, а раздел начинается на странице ${real}.`, recommend: 'Обновите номера страниц в содержании (обновите поле оглавления в Word).', ref: 'СТУ 7.5–07–2021, п. 6.4.2' });
+    }
+  }
+
+  global.STURules = { runChecks, classify, DOC_REQUIREMENTS, STRUCTURAL, computeForcedPageStarts, detectDocType, crossCheckToc, parseToc };
 
   // Автоопределение вида документа по титульному листу и тексту.
   function detectDocType(doc) {

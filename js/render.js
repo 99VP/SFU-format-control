@@ -474,6 +474,52 @@
     return f.default || f.first || null;
   }
 
+  // ---------------------------------------------------------------- split paragraphs
+  function textLeaves(root) {
+    const arr = [];
+    (function w(n) {
+      for (const c of Array.from(n.childNodes)) {
+        if (c.nodeType === 3) arr.push(c);
+        else if (c.nodeType === 1 && c.tagName !== 'BR') w(c);
+      }
+    })(root);
+    return arr;
+  }
+  // Делит абзац на две части так, чтобы первая поместилась в availPx (как перенос в Word).
+  function splitElement(el, availPx, widthPx) {
+    if (el.tagName !== 'P') return null;
+    const leaves = textLeaves(el);
+    const total = leaves.reduce((a, n) => a + (n.nodeValue || '').length, 0);
+    if (total < 40) return null;
+    const host = document.createElement('div');
+    host.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden;';
+    host.style.width = widthPx + 'px';
+    const clone = el.cloneNode(true);
+    clone.style.textIndent = '0';
+    host.appendChild(clone); document.body.appendChild(host);
+    const cleaves = textLeaves(clone);
+    for (const n of cleaves) n.__full = n.nodeValue;
+    const totalClone = cleaves.reduce((a, n) => a + n.__full.length, 0);
+    const setKeep = (K) => { let left = K; for (const n of cleaves) { const take = Math.max(0, Math.min(n.__full.length, left)); n.nodeValue = n.__full.slice(0, take); left -= take; } };
+    let lo = 0, hi = totalClone, best = 0;
+    for (let it = 0; it < 18 && lo <= hi; it++) { const mid = (lo + hi) >> 1; setKeep(mid); if (clone.scrollHeight <= availPx) { best = mid; lo = mid + 1; } else hi = mid - 1; }
+    host.remove();
+    if (best <= 0 || best >= totalClone) return null;
+    const charAt = (i) => { let left = i; for (const n of leaves) { const t = n.nodeValue || ''; if (left < t.length) return t[left]; left -= t.length; } return ''; };
+    let cut = best;
+    while (cut > 0 && charAt(cut - 1) !== ' ') cut--;
+    if (cut <= 0) return null;
+    const head = el.cloneNode(true), tail = el.cloneNode(true);
+    const hl = textLeaves(head), tl = textLeaves(tail);
+    let left = cut;
+    for (const n of hl) { const t = n.nodeValue || ''; if (left >= t.length) { left -= t.length; } else { n.nodeValue = t.slice(0, left); left = 0; } }
+    left = cut;
+    for (const n of tl) { const t = n.nodeValue || ''; if (left >= t.length) { n.nodeValue = ''; left -= t.length; } else { n.nodeValue = t.slice(left).replace(/^\s+/, ''); left = 0; } }
+    if (!textLeaves(tail).some((n) => (n.nodeValue || '').trim())) return null;
+    tail.removeAttribute('id');
+    return { head, tail };
+  }
+
   // ---------------------------------------------------------------- render
   function renderDocument(doc, roles, findings, viewer) {
     viewer.innerHTML = '';
@@ -572,11 +618,43 @@
         nodes.push({ idx, node: b.kind === 'table' ? buildTable(b, idx, ctx) : buildParagraph(b, idx, ctx) });
       }
       const hadContent = cur.flow.childElementCount > 0;
+      const group = nodes.length > 1;
       for (const n of nodes) cur.flow.appendChild(n.node);
-      if (cur.flow.scrollHeight > cur.textH + 1 && hadContent && cur.flow.childElementCount > nodes.length) {
-        for (const n of nodes) cur.flow.removeChild(n.node);
-        cur = newPage(section);
-        for (const n of nodes) cur.flow.appendChild(n.node);
+      if (cur.flow.scrollHeight > cur.textH + 1) {
+        // одиночный абзац: переносим часть текста на следующую страницу, как Word
+        if (!group && nodes[0].node.tagName === 'P') {
+          const idx = nodes[0].idx;
+          let node = nodes[0].node; let guard = 0;
+          const headPage = cur.index; let headEl = null;
+          while (cur.flow.scrollHeight > cur.textH + 1 && guard++ < 30) {
+            const avail = cur.textH - node.offsetTop;
+            let ok = false;
+            if (avail > 24) {
+              const sp = splitElement(node, avail, cur.flow.clientWidth);
+              if (sp) {
+                cur.flow.removeChild(node);
+                cur.flow.appendChild(sp.head);
+                if (!headEl) headEl = sp.head;
+                cur = newPage(section);
+                node = sp.tail; node.style.marginTop = '0'; node.style.textIndent = '0';
+                cur.flow.appendChild(node); ok = true;
+              }
+            }
+            if (!ok) {
+              if (cur.flow.childElementCount > 1) { cur.flow.removeChild(node); cur = newPage(section); cur.flow.appendChild(node); ok = true; }
+              else break;
+            }
+          }
+          pageForBlock[idx] = headEl ? headPage : cur.index;
+          blockEls[idx] = headEl || node; cur.blocks.push(idx);
+          if (item.forcedAfter) cur = newPage(sectionForBlock(doc, Math.min(firstIdx + 1, doc.blocks.length - 1)));
+          continue;
+        }
+        if (hadContent && cur.flow.childElementCount > nodes.length) {
+          for (const n of nodes) cur.flow.removeChild(n.node);
+          cur = newPage(section);
+          for (const n of nodes) cur.flow.appendChild(n.node);
+        }
       }
       for (const n of nodes) { pageForBlock[n.idx] = cur.index; blockEls[n.idx] = n.node; cur.blocks.push(n.idx); }
       if (item.forcedAfter) cur = newPage(sectionForBlock(doc, Math.min(firstIdx + 1, doc.blocks.length - 1)));

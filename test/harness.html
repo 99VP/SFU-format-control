@@ -87,13 +87,15 @@ try {
   if (cenDbg) {
     const flow = div.querySelector('.stu-flow');
     if (flow) {
-      const fl = flow.getBoundingClientRect().left, fw = flow.clientWidth;
+      const fl = flow.getBoundingClientRect();
+      const flowCenter = fl.left + fl.width / 2;
       let n = 0;
       div.querySelectorAll('.stu-p').forEach(function (p) {
-        if (n >= 8) return;
+        if (n >= 10) return;
         if (getComputedStyle(p).textAlign !== 'center') return;
-        const r = p.getBoundingClientRect();
-        log('центр: leftGap=' + Math.round(r.left - fl) + ' rightGap=' + Math.round(fw - (r.left - fl + r.width)) + ' текст=' + JSON.stringify((p.textContent || '').slice(0, 30)));
+        const r = document.createRange(); r.selectNodeContents(p);
+        const rect = r.getBoundingClientRect();
+        log('центр: текстЦентр=' + Math.round(rect.left + rect.width / 2) + ' центрОбласти=' + Math.round(flowCenter) + ' сдвиг=' + Math.round(rect.left + rect.width / 2 - flowCenter) + ' текст=' + JSON.stringify((p.textContent || '').slice(0, 25)));
         n++;
       });
     }

@@ -28,7 +28,12 @@ body {
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, "Noto Sans", sans-serif;
   font-size: 15px; overflow: hidden;
   transition: background .5s ease, color .5s ease;
+  /* Интерфейс (линейки, панель замечаний, верхняя часть) выделять нельзя. */
+  -webkit-user-select: none; user-select: none;
 }
+/* Выделять можно только текст документа на листе. */
+.stu-flow, .stu-flow * { -webkit-user-select: text; user-select: text; }
+input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; }
 
 /* --------------------------------------------------- wave theme transition */
 ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }

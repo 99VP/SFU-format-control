@@ -55,15 +55,19 @@
 
   function styleParagraphText(el, p) {
     const jc = p.jc;
+    const centered = (jc === 'center' || jc === 'right' || jc === 'end');
     if (jc === 'both' || jc === 'justify' || jc === 'distribute') el.style.textAlign = 'justify';
     else if (jc === 'center') el.style.textAlign = 'center';
     else if (jc === 'right' || jc === 'end') el.style.textAlign = 'right';
     else el.style.textAlign = 'left';
     const ind = p.ind || {};
-    if (ind.left) el.style.marginLeft = TW(ind.left) + 'px';
-    if (ind.right) el.style.marginRight = TW(ind.right) + 'px';
-    if (ind.firstLine) el.style.textIndent = TW(ind.firstLine) + 'px';
-    else if (ind.hanging) el.style.textIndent = (-TW(ind.hanging)) + 'px';
+    // у центрированных и правосторонних строк отступы не применяем, иначе текст уезжает
+    if (!centered) {
+      if (ind.left) el.style.marginLeft = TW(ind.left) + 'px';
+      if (ind.right) el.style.marginRight = TW(ind.right) + 'px';
+      if (ind.firstLine) el.style.textIndent = TW(ind.firstLine) + 'px';
+      else if (ind.hanging) el.style.textIndent = (-TW(ind.hanging)) + 'px';
+    }
     const sp = p.spacing || {};
     const firstRun = (p.runs || []).find((r) => r.size) || (p.runs || [])[0] || { size: 14 };
     const lh = lineHeightPx(firstRun.size, sp);
@@ -219,7 +223,8 @@
     segs.push(seg);
 
     const ind = p.ind || {};
-    const startOffset = TW((ind.left || 0) + Math.max(0, ind.firstLine || 0));
+    const centered = (p.jc === 'center' || p.jc === 'right' || p.jc === 'end');
+    const startOffset = centered ? 0 : TW((ind.left || 0) + Math.max(0, ind.firstLine || 0));
     const textW = Math.max(0, (ctx.textWidthPx || 0) - startOffset);
     const tabs = (p.tabs || []).map((t) => ({ pos: TW(t.pos), val: t.val, leader: t.leader })).sort((a, b) => a.pos - b.pos);
     const widths = segs.map(segWidth);
@@ -301,6 +306,10 @@
   function renderTocParagraph(el, p, blockIndex, ctx) {
     el.classList.add('stu-toc');
     ctx._curPara = p;
+    const ind = p.ind || {};
+    el.style.marginLeft = TW((ind.left || 0) + (ind.firstLine || 0)) + 'px';
+    if (ind.right) el.style.marginRight = TW(ind.right) + 'px';
+    el.style.textIndent = '0';
     const segments = [];
     let seg = [];
     (p.runs || []).forEach((run, ri) => {

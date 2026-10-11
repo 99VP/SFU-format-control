@@ -101,21 +101,25 @@
 
   // ------------------------------------------------------------------ classify
   function computeTitleEnd(doc, forcedPageStarts) {
+    const blocks = doc.blocks || [];
+    // Титульный лист это одна страница: ориентируемся на первый разрыв страницы.
     const starts = [...forcedPageStarts].filter((i) => i > 0).sort((a, b) => a - b);
     let end = starts.length ? starts[0] : null;
-    // Структурный элемент может начинаться раньше первого разрыва страницы.
-    for (let i = 0; i < doc.blocks.length; i++) {
-      const t = (doc.blocks[i].text || '').slice(0, 80).trim().toUpperCase().replace(/[.:]+$/, '');
-      if (/^(РЕФЕРАТ|АННОТАЦИЯ|СОДЕРЖАНИЕ|ВВЕДЕНИЕ)$/.test(t)) { if (end == null || i < end) end = i; break; }
+    if (end == null) {
+      // разрыва нет: ищем первый структурный заголовок основной части
+      for (let i = 0; i < blocks.length; i++) {
+        const t = (blocks[i].text || '').slice(0, 80).trim().toUpperCase().replace(/[.:]+$/, '');
+        if (/^(РЕФЕРАТ|АННОТАЦИЯ|СОДЕРЖАНИЕ|ВВЕДЕНИЕ)$/.test(t)) { end = i; break; }
+      }
+      if (end == null) {
+        for (let i = 0; i < blocks.length; i++) {
+          const raw = blocks[i].text || ''; const t = normText(raw);
+          if (/\t/.test(raw) || /\d\s*$/.test(t)) continue;
+          if (/^\d+(?:\.\d+)*\s+\S/.test(t) && t.length < 200) { end = i; break; }
+        }
+      }
     }
-    // Либо первый нумерованный раздел основной части (строки оглавления пропускаем).
-    for (let i = 0; i < doc.blocks.length; i++) {
-      const raw = doc.blocks[i].text || '';
-      const t = normText(raw);
-      if (/\t/.test(raw) || /\d\s*$/.test(t)) continue; // похоже на строку оглавления
-      if (/^\d+(?:\.\d+)*\s+\S/.test(t) && t.length < 200) { if (end == null || i < end) end = i; break; }
-    }
-    if (end == null) end = 0;
+    if (end == null || end > 80) end = 0;
     return Math.max(0, end);
   }
 
@@ -1046,9 +1050,18 @@
     '\u2190': { name: 'стрелка «←»', ai: true, level: 'warning' },
     '\u21D2': { name: 'стрелка «⇒»', ai: true, level: 'warning' },
     '\u00D7': { name: 'знак умножения «×»', ai: false, level: 'info' },
+    '\u201C': { name: 'английская кавычка “', ai: false, level: 'info' },
+    '\u201D': { name: 'английская кавычка ”', ai: false, level: 'info' },
+    '\u2018': { name: 'английская кавычка ‘', ai: false, level: 'info' },
+    '\u2019': { name: 'английская кавычка ’', ai: false, level: 'info' },
+    '\u201E': { name: 'кавычка „', ai: false, level: 'info' },
+    '\u2032': { name: 'штрих «′»', ai: true, level: 'warning' },
+    '\u2033': { name: 'двойной штрих «″»', ai: true, level: 'warning' },
+    '\u2044': { name: 'дробная черта «⁄»', ai: true, level: 'warning' },
     '"': { name: 'прямая кавычка «"»', ai: true, level: 'warning' },
     "'": { name: "прямая кавычка «'»", ai: true, level: 'warning' },
     '`': { name: 'обратный апостроф', ai: true, level: 'warning' },
+    '\u2026': { name: 'многоточие «…»', ai: false, level: 'info' },
   };
   const HOMOGLYPH_KEY = '__homoglyph__';
 
@@ -1156,6 +1169,15 @@
         detail: `В диапазоне чисел использовано «${badRanges[0].replace(/\s/g, '␣')}». Между числами в цифровой форме принято тире «–» без пробелов, а не дефис.`,
         recommend: 'Ставьте тире «–» без пробелов: 1,0–6,0. Дефис и длинное тире между числами не используют.',
         ref: 'Правила русской типографики (Розенталь; Мильчин–Чельцова), gramota.ru',
+      });
+      // длинное тире
+      const emCount = (text.match(/\u2014/g) || []).length;
+      if (emCount) add({
+        category: 'chars', level: 'info', ai: false, blockIndex: i,
+        title: 'Использовано длинное тире',
+        detail: `Длинное тире встречается в абзаце ${emCount} раз(а).`,
+        recommend: 'Между словами тире отделяют пробелами. В диапазонах чисел и в текстах сайта используйте короткое тире «–».',
+        ref: 'Правила русской типографики',
       });
       // длинное тире вплотную к словам (без пробелов)
       if (/\S\u2014\S/.test(text)) add({
@@ -1300,10 +1322,24 @@
     'захватывающая природная красота', 'вековое наследие', 'достойный посещения',
     'я надеюсь, это помогло', 'дайте мне знать', 'сообщите мне', 'вы абсолютно правы',
     'более подробный анализ', 'в этой статье мы рассмотрим', 'в данной статье',
+    'в современном мире', 'в конечном итоге', 'следует подчеркнуть', 'стоит подчеркнуть',
+    'необходимо подчеркнуть', 'широкий спектр', 'ключевой аспект', 'в рамках данного',
+    'данный подход', 'представляет собой важный', 'выводит на новый уровень', 'неотъемлемой частью',
   ];
 
   function checkAiMarkers(blocks, roles, add) {
     const ALLOW = new Set(['body', 'heading', 'structural', 'list', 'manualList', 'where', 'figureCaption', 'tableCaption']);
+    const MARKERS = [
+      ['важно отметить', 2], ['стоит отметить', 2], ['следует отметить', 2], ['необходимо отметить', 2],
+      ['играет важную роль', 2], ['играет ключевую роль', 2], ['ключевую роль', 1], ['широкий спектр', 2],
+      ['в современном мире', 2], ['в конечном итоге', 2], ['подводя итог', 2], ['в заключение', 1],
+      ['неотъемлемой частью', 2], ['представляет собой', 1], ['в данной статье', 2], ['в этой статье', 2],
+      ['ключевой аспект', 2], ['данный подход', 1], ['на основе анализа', 1], ['в рамках данного', 1],
+      ['таким образом', 1], ['в целом', 1], ['кроме того', 1], ['более того', 1], ['в частности', 1],
+      ['в свою очередь', 1], ['на сегодняшний день', 1], ['позволяет', 1], ['позволяют', 1],
+      ['обеспечивает', 1], ['обеспечивают', 1], ['является', 1], ['являются', 1],
+      ['данный', 1], ['данная', 1], ['данные', 1], ['комплексн', 1], ['эффективн', 1],
+    ];
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i]; if (b.kind !== 'p') continue;
       const t = b.text || ''; if (!t) continue;
@@ -1315,14 +1351,24 @@
               category: 'ai', level: 'info', ai: true, blockIndex: i,
               title: 'Оборот, частый у машинного текста',
               detail: `Найден оборот «${ph}».`,
-              recommend: 'Перепишите своими словами или уберите – такие шаблоны часто выдают сгенерированный текст.',
-              ref: 'СТУ 7.5–07–2021, п. 7.3.1',
+              recommend: 'Перепишите своими словами или уберите.',
+              ref: 'Правила русской типографики',
             });
           }
         }
+        // плотность шаблонных оборотов: два и более разных в одном абзаце
+        const found = [];
+        for (const m of MARKERS) { if (low.indexOf(m[0]) >= 0 && found.length < 8) found.push(m[0]); }
+        if (found.length >= 2) add({
+          category: 'ai', level: 'info', ai: true, blockIndex: i,
+          title: 'Возможно машинный текст',
+          detail: `В абзаце шаблонные обороты: ${found.join(', ')}.`,
+          recommend: 'Перепишите абзац своими словами, уберите клише.',
+          ref: 'Правила русской типографики',
+        });
         let md = null;
         if (/\*\*/.test(t)) md = '**'; else if (/^\s*#{1,6}\s/.test(b.text) || /(^|\s)##\s/.test(t)) md = '##'; else if (/```/.test(t)) md = '```';
-        if (md) add({ category: 'ai', level: 'warning', ai: true, blockIndex: i, title: 'Разметка Markdown в тексте', detail: `Найден символ разметки «${md}».`, recommend: 'Уберите символы Markdown – они появляются при вставке из чат-ботов.', ref: 'СТУ 7.5–07–2021, п. 7.3.1' });
+        if (md) add({ category: 'ai', level: 'warning', ai: true, blockIndex: i, title: 'Разметка Markdown в тексте', detail: `Найден символ разметки «${md}».`, recommend: 'Уберите символы Markdown.', ref: 'Правила русской типографики' });
       }
     }
   }

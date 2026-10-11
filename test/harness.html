@@ -74,6 +74,15 @@ try {
     });
     log('footerNumber-страниц в развёртке: ' + div.querySelectorAll('.stu-footer').length);
   }
+  const findDbg = new URLSearchParams(location.search).get('find');
+  if (findDbg) {
+    for (let i = 0; i < doc.blocks.length; i++) {
+      const b = doc.blocks[i];
+      if (b.kind === 'p' && (b.text || '').indexOf(findDbg) >= 0) {
+        log('найдено b' + i + ' роль=' + (res.roles[i] && res.roles[i].role) + ' jc=' + b.jc + ' текст=' + JSON.stringify((b.text || '').slice(0, 70)));
+      }
+    }
+  }
   const tabsDbg = new URLSearchParams(location.search).get('tabs');
   if (tabsDbg) {
     const el = Array.from(div.querySelectorAll('.stu-p')).find((e) => e.textContent.indexOf('номер группы') >= 0);

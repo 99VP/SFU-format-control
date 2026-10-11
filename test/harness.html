@@ -83,6 +83,21 @@ try {
       }
     }
   }
+  const cenDbg = new URLSearchParams(location.search).get('center');
+  if (cenDbg) {
+    const flow = div.querySelector('.stu-flow');
+    if (flow) {
+      const fl = flow.getBoundingClientRect().left, fw = flow.clientWidth;
+      let n = 0;
+      div.querySelectorAll('.stu-p').forEach(function (p) {
+        if (n >= 8) return;
+        if (getComputedStyle(p).textAlign !== 'center') return;
+        const r = p.getBoundingClientRect();
+        log('центр: leftGap=' + Math.round(r.left - fl) + ' rightGap=' + Math.round(fw - (r.left - fl + r.width)) + ' текст=' + JSON.stringify((p.textContent || '').slice(0, 30)));
+        n++;
+      });
+    }
+  }
   const tabsDbg = new URLSearchParams(location.search).get('tabs');
   if (tabsDbg) {
     const el = Array.from(div.querySelectorAll('.stu-p')).find((e) => e.textContent.indexOf('номер группы') >= 0);

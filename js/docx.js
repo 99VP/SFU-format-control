@@ -90,22 +90,23 @@
     const jc = kid(pPr, 'jc'); if (jc) o.jc = attr(jc, 'val');
     const ind = kid(pPr, 'ind');
     if (ind) {
-      o.ind = {
-        left: attr(ind, 'left') != null ? +attr(ind, 'left') : (attr(ind, 'start') != null ? +attr(ind, 'start') : null),
-        right: attr(ind, 'right') != null ? +attr(ind, 'right') : (attr(ind, 'end') != null ? +attr(ind, 'end') : null),
-        firstLine: attr(ind, 'firstLine') != null ? +attr(ind, 'firstLine') : null,
-        hanging: attr(ind, 'hanging') != null ? +attr(ind, 'hanging') : null,
-      };
+      const io = {};
+      const L = attr(ind, 'left') != null ? attr(ind, 'left') : attr(ind, 'start');
+      if (L != null) io.left = +L;
+      const R = attr(ind, 'right') != null ? attr(ind, 'right') : attr(ind, 'end');
+      if (R != null) io.right = +R;
+      const FL = attr(ind, 'firstLine'); if (FL != null) io.firstLine = +FL;
+      const HG = attr(ind, 'hanging'); if (HG != null) io.hanging = +HG;
+      o.ind = io;
     }
     const sp = kid(pPr, 'spacing');
     if (sp) {
-      o.spacing = {
-        before: attr(sp, 'before') != null ? +attr(sp, 'before') : null,
-        after: attr(sp, 'after') != null ? +attr(sp, 'after') : null,
-        line: attr(sp, 'line') != null ? +attr(sp, 'line') : null,
-        lineRule: attr(sp, 'lineRule') || null,
-        beforeAutospacing: onOff(kid(sp, 'beforeAutospacing')),
-      };
+      const so = {};
+      const b = attr(sp, 'before'); if (b != null) so.before = +b;
+      const a = attr(sp, 'after'); if (a != null) so.after = +a;
+      const l = attr(sp, 'line'); if (l != null) so.line = +l;
+      const lr = attr(sp, 'lineRule'); if (lr != null) so.lineRule = lr;
+      o.spacing = so;
     }
     const tabs = kid(pPr, 'tabs');
     if (tabs) {

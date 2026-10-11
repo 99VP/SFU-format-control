@@ -1592,7 +1592,7 @@
       const b = blocks[i]; if (b.kind !== 'p') continue;
       const t = normText(b.text); if (!t) continue;
       let num = null;
-      const m = t.match(/^(\d{1,3})\.\s+/);
+      const m = t.match(/^(\d{1,3})[.)]?\s+/);
       if (b.numPr && b.numPr.numId) { n++; num = n; }
       else if (m) { num = +m[1]; if (num !== n + 1 && seqEntry == null) seqEntry = i; n = num; }
       const fl = b.ind ? b.ind.firstLine : (b.numPr ? 708 : null);
@@ -1630,7 +1630,8 @@
     let chronological = years.length > 1 && years.every((y) => y != null);
     if (chronological) for (let i = 1; i < years.length; i++) if (years[i] < years[i - 1]) { chronological = false; break; }
 
-    const method = systematic ? 'в порядке появления в тексте' : (alphabetical ? 'по алфавиту' : (chronological ? 'по годам' : null));
+    let method = null;
+    if (entries.length >= 2) method = systematic ? 'в порядке появления в тексте' : (alphabetical ? 'по алфавиту' : (chronological ? 'по годам' : null));
 
     // Конкретные нарушения порядка появления (даже если выбран другой способ – информативно).
     if (firstSeen.length > 1) {

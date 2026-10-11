@@ -1,0 +1,548 @@
+/* ==========================================================================
+   СТУ-Нормоконтроль – интерфейс: загрузка файла, экран обработки,
+   панель замечаний, список листов и развёртка документа.
+   ========================================================================== */
+(function () {
+  'use strict';
+
+  const $ = (sel) => document.querySelector(sel);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---- сохранение последнего файла между обновлениями страницы (IndexedDB)
+  const IDB_NAME = 'stu-normokontrol', IDB_STORE = 'files';
+  function idbOpen() {
+    return new Promise((res, rej) => {
+      if (!('indexedDB' in window)) return rej(new Error('no idb'));
+      const r = indexedDB.open(IDB_NAME, 1);
+      r.onupgradeneeded = () => { try { r.result.createObjectStore(IDB_STORE); } catch (e) { } };
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+  }
+  async function idbPut(key, val) {
+    try { const db = await idbOpen(); await new Promise((res, rej) => { const tx = db.transaction(IDB_STORE, 'readwrite'); tx.objectStore(IDB_STORE).put(val, key); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); } catch (e) { }
+  }
+  async function idbGet(key) {
+    try { const db = await idbOpen(); return await new Promise((res, rej) => { const tx = db.transaction(IDB_STORE, 'readonly'); const rq = tx.objectStore(IDB_STORE).get(key); rq.onsuccess = () => res(rq.result || null); rq.onerror = () => rej(rq.error); }); } catch (e) { return null; }
+  }
+  async function idbDel(key) {
+    try { const db = await idbOpen(); await new Promise((res) => { const tx = db.transaction(IDB_STORE, 'readwrite'); tx.objectStore(IDB_STORE).delete(key); tx.oncomplete = res; tx.onerror = res; }); } catch (e) { }
+  }
+  function saveLast(name, buf, docType) { try { return idbPut('last', { name: name, buf: buf, docType: docType, at: Date.now() }); } catch (e) { } }
+
+  // История проверок (локально): имя, дата, счётчики, тип.
+  async function saveHistory(name, buf, docType) {
+    try {
+      const counts = {};
+      for (const f of state.findings) counts[f.level] = (counts[f.level] || 0) + 1;
+      const rec = { name: name, at: Date.now(), err: counts.error || 0, warn: counts.warning || 0, info: counts.info || 0, type: docType };
+      let h = (await idbGet('history')) || [];
+      h = h.filter((x) => x.name !== name);
+      h.unshift(rec); h = h.slice(0, 3);
+      await idbPut('history', h);
+      await idbPut('blob:' + name, buf);
+    } catch (e) { }
+  }
+  async function renderHistory() {
+    const card = $('#history-card'), list = $('#history-list');
+    if (!card || !list) return;
+    let h = [];
+    try { h = (await idbGet('history')) || []; } catch (e) { }
+    if (!h.length) { card.style.display = 'none'; list.innerHTML = ''; return; }
+    card.style.display = '';
+    list.innerHTML = '';
+    h.forEach((r) => {
+      const el = document.createElement('div'); el.className = 'hist-item';
+      const nm = document.createElement('span'); nm.className = 'hist-name'; nm.textContent = r.name; nm.title = r.name;
+      const meta = document.createElement('span'); meta.className = 'hist-meta';
+      meta.innerHTML = '<span class="badge err">' + (r.err | 0) + '</span><span class="badge warn">' + (r.warn | 0) + '</span><span class="badge info">' + (r.info | 0) + '</span>';
+      const d = document.createElement('span'); d.textContent = new Date(r.at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      meta.appendChild(d);
+      el.appendChild(nm); el.appendChild(meta);
+      el.addEventListener('click', async () => {
+        let buf = null; try { buf = await idbGet('blob:' + r.name); } catch (e) { }
+        if (!buf) { alert('Файл «' + r.name + '» больше не хранится – загрузите его снова.'); return; }
+        if (r.type && DOC_TYPES.some((x) => x[0] === r.type)) state.docType = r.type;
+        showProcessing(r.name);
+        processBuffer(r.name, buf);
+      });
+      list.appendChild(el);
+    });
+  }
+  async function clearHistory() {
+    try {
+      const h = (await idbGet('history')) || [];
+      for (const r of h) { try { await idbDel('blob:' + r.name); } catch (e) { } }
+      await idbDel('history');
+    } catch (e) { }
+    renderHistory();
+  }
+
+  const state = {
+    doc: null, roles: null, findings: [], render: null,
+    fileName: '', docType: 'vkr', filter: 'all', buffer: null, autoType: null, manualType: false, titleEnd: 0,
+  };
+
+  const DOC_TYPES = [
+    ['vkr', 'ВКР (бакалаврская)'], ['diplom', 'Дипломная (ДР / ДП)'],
+    ['magister', 'Магистерская'], ['kursovaya', 'Курсовая'],
+    ['referat', 'Реферат'], ['esse', 'Эссе'],
+    ['kontrolnaya', 'Контрольная'], ['rgz', 'РГЗ / РГР'],
+    ['praktika', 'Отчёт о практике'], ['praktika_letnyaya', 'Летняя практика'],
+    ['otchet', 'Отчёт (лаб. / практ.)'],
+  ];
+
+  // ------------------------------------------------------------------ theme
+  function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    localStorage.setItem('stu-theme', t);
+    const sun = $('#ico-sun'), moon = $('#ico-moon');
+    if (sun && moon) { sun.style.display = t === 'dark' ? 'none' : 'block'; moon.style.display = t === 'dark' ? 'block' : 'none'; }
+  }
+  function toggleTheme(e) {
+    const cur = document.documentElement.getAttribute('data-theme') || 'light';
+    const next = cur === 'dark' ? 'light' : 'dark';
+    const x = e && e.clientX ? (e.clientX / window.innerWidth * 100) : 90;
+    const y = e && e.clientY ? (e.clientY / window.innerHeight * 100) : 4;
+    document.documentElement.style.setProperty('--vt-x', x + '%');
+    document.documentElement.style.setProperty('--vt-y', y + '%');
+    if (document.startViewTransition) {
+      document.documentElement.classList.add('vt-wave');
+      const vt = document.startViewTransition(() => applyTheme(next));
+      vt.finished.finally(() => document.documentElement.classList.remove('vt-wave'));
+    } else {
+      applyTheme(next);
+    }
+  }
+
+  // ------------------------------------------------------------------ screens
+  function showStart() {
+    $('#screen-start').style.display = 'flex';
+    $('#screen-processing').style.display = 'none';
+    $('#workspace').classList.remove('on');
+    $('#topfile').textContent = '';
+    $('#fix-btn').style.display = 'none';
+    const bb = $('#back-btn'); if (bb) bb.style.display = 'none';
+    renderHistory();
+  }
+  function showProcessing(name) {
+    $('#screen-start').style.display = 'none';
+    $('#workspace').classList.remove('on');
+    $('#screen-processing').style.display = 'flex';
+    $('#proc-name').textContent = name;
+    setSteps(-1, 0);
+  }
+  function showWorkspace() {
+    $('#screen-start').style.display = 'none';
+    $('#screen-processing').style.display = 'none';
+    $('#workspace').classList.add('on');
+    $('#fix-btn').style.display = '';
+    const bb = $('#back-btn'); if (bb) bb.style.display = '';
+  }
+
+  const STEPS = ['Чтение файла', 'Разбор структуры документа', 'Проверка по СТУ 7.5–07–2021', 'Построение развёртки', 'Готово'];
+  function setSteps(active, pct) {
+    const ul = $('#proc-steps'); ul.innerHTML = '';
+    STEPS.forEach((s, i) => {
+      const li = document.createElement('li');
+      li.className = i < active ? 'done' : (i === active ? 'active' : '');
+      li.innerHTML = '<span class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>' + s;
+      ul.appendChild(li);
+    });
+    $('#proc-bar').style.width = (pct || 0) + '%';
+  }
+
+  // ------------------------------------------------------------------ file
+  async function handleFile(file) {
+    if (!file) return;
+    if (/\.doc$/i.test(file.name)) {
+      if (await tryConvertDoc(file)) return;
+      alert('Формат .doc не читается в браузере.\n' +
+        'Откройте файл в Word и сохраните как .docx («Сохранить как» → «Документ Word (*.docx)»).\n\n' +
+        'Либо запустите локальный сервер (python3 server/server.py) с установленным LibreOffice – тогда .doc преобразуется автоматически.');
+      return;
+    }
+    if (!/\.docx$/i.test(file.name)) {
+      alert('Принимаются только файлы Word в форматах .docx и .doc.');
+      return;
+    }
+    state.fileName = file.name;
+    showProcessing(file.name);
+    const buf = await file.arrayBuffer();
+    await processBuffer(file.name, buf);
+  }
+
+  // Попытка преобразовать .doc в .docx через локальный сервер.
+  async function tryConvertDoc(file) {
+    if (!/^https?:$/.test(location.protocol)) return false;
+    try {
+      const r = await fetch('api/convert-doc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: file,
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        if (j && j.hint) alert('Сервер не смог преобразовать .doc.\n' + j.hint);
+        return true;
+      }
+      const buf = await r.arrayBuffer();
+      await processBuffer(file.name.replace(/\.doc$/i, '.docx'), buf);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function processBuffer(name, buf) {
+    state.fileName = name;
+    state.buffer = buf;
+    try {
+      setSteps(0, 8); await sleep(200);
+      setSteps(1, 28); await sleep(150);
+      const doc = STUDocx.parse(buf);
+      state.doc = doc;
+      const det = STURules.detectDocType(doc);
+      state.autoType = det;
+      if (det && det.type && !state.manualType) state.docType = det.type;
+      syncTypeChips();
+      setSteps(2, 58); await sleep(150);
+      const res = STURules.runChecks(doc, state.docType);
+      state.roles = res.roles;
+      state.findings = res.findings;
+      state.titleEnd = res.titleEnd;
+      setSteps(3, 82); await sleep(150);
+      showWorkspace();
+      $('#topfile').textContent = name;
+      const rnd = STURender.renderDocument(doc, res.roles, res.findings, $('#viewer'));
+      state.render = rnd;
+      buildFileMeta(doc);
+      setSteps(4, 100); await sleep(200);
+      buildFindings();
+      buildPages();
+      wireViewerScroll();
+      saveLast(name, buf, state.docType);
+      saveHistory(name, buf, state.docType);
+    } catch (err) {
+      console.error(err);
+      alert('Не удалось обработать файл.\n' + (err && err.message ? err.message : err));
+      showStart();
+    }
+  }
+
+  function buildFileMeta(doc) {
+    const m = $('#file-meta');
+    const s = doc.sections[0];
+    const g = STURender.geomOf(s);
+    const req = STURules.DOC_REQUIREMENTS ? STURules.DOC_REQUIREMENTS[state.docType] : null;
+    const typeLabel = req ? req.label : state.docType;
+    const auto = state.autoType && state.autoType.confidence === 'high' ? ' (определён автоматически)' : '';
+    m.innerHTML =
+      '<div class="fm-name">' + escapeHtml(state.fileName) + '</div>' +
+      '<div class="fm-sub">' + g.wmm.toFixed(0) + '×' + g.hmm.toFixed(0) + ' мм · ' +
+      (g.portrait ? 'книжная' : 'альбомная') + ' · листов: ' + state.render.pages.length + '</div>' +
+      '<div class="fm-sub">Тип: ' + escapeHtml(typeLabel) + auto + '</div>';
+  }
+
+  function syncTypeChips() {
+    document.querySelectorAll('#type-chips .type-chip').forEach((x) => x.classList.toggle('active', x.getAttribute('data-type') === state.docType));
+  }
+
+  // Перепроверить текущий документ (например, после смены вида вручную).
+  function rerun() {
+    if (!state.doc || !state.buffer) return;
+    try {
+      const res = STURules.runChecks(state.doc, state.docType);
+      state.roles = res.roles; state.findings = res.findings;
+      state.titleEnd = res.titleEnd;
+      const rnd = STURender.renderDocument(state.doc, res.roles, res.findings, $('#viewer'));
+      state.render = rnd;
+      buildFileMeta(state.doc);
+      buildFindings();
+      buildPages();
+      wireViewerScroll();
+      saveLast(state.fileName, state.buffer, state.docType);
+    } catch (e) { console.error(e); }
+  }
+
+  // ------------------------------------------------------------------ findings
+  const ORDER = { error: 0, warning: 1, info: 2 };
+  function buildFindings() {
+    const list = $('#find-list');
+    const counts = { error: 0, warning: 0, info: 0 };
+    for (const f of state.findings) counts[f.level] = (counts[f.level] || 0) + 1;
+    $('#sum-err').textContent = counts.error; $('#sum-warn').textContent = counts.warning; $('#sum-info').textContent = counts.info;
+
+    const items = state.findings
+      .filter((f) => state.filter === 'all' || (state.filter === 'ai' ? f.ai : f.level === state.filter))
+      .sort((a, b) => (ORDER[a.level] - ORDER[b.level]) || ((a.page == null ? 999 : a.page) - (b.page == null ? 999 : b.page)));
+
+    if (!items.length) {
+      list.innerHTML = '<div class="no-find">' + (state.findings.length ? 'Нет замечаний выбранного уровня.' : 'Замечаний не найдено – документ соответствует проверяемым требованиям СТУ.') + '</div>';
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    for (const f of items) {
+      const el = document.createElement('div');
+      el.className = 'find-item ' + f.level + (f.ai ? ' ai' : '');
+      el.innerHTML =
+        '<div class="fi-top"><span class="fi-title">' + escapeHtml(f.title) + '</span>' +
+        (f.ai ? '<span class="fi-ai">ИИ</span>' : '') +
+        '<span class="fi-badge">' + levelLabel(f.level) + (f.page != null ? ' · лист ' + (f.page + 1) : '') + '</span></div>' +
+        '<div class="fi-detail">' + escapeHtml(f.detail) + '</div>' +
+        (f.recommend ? '<div class="fi-rec"><b>Как исправить:</b> ' + escapeHtml(f.recommend) + '</div>' : '') +
+        '<div class="fi-ref">' + escapeHtml(f.ref || '') + '</div>';
+      el.addEventListener('click', () => focusFinding(f));
+      el.__finding = f;
+      frag.appendChild(el);
+    }
+    list.innerHTML = '';
+    list.appendChild(frag);
+  }
+
+  function focusFinding(f) {
+    if (f.element) {
+      f.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      f.element.classList.remove('stu-flash');
+      void f.element.offsetWidth;
+      f.element.classList.add('stu-flash');
+      setActivePage(f.page);
+    }
+  }
+
+  function levelLabel(l) { return l === 'error' ? 'Ошибка' : l === 'warning' ? 'Предупреждение' : 'Инфо'; }
+
+  // ------------------------------------------------------------------ pages
+  function buildPages() {
+    const wrap = $('#page-list');
+    const byPage = state.render.findingsByPage;
+    const frag = document.createDocumentFragment();
+    state.render.pages.forEach((p, i) => {
+      const fs = byPage.get(i) || [];
+      const err = fs.filter((f) => f.level === 'error').length;
+      const warn = fs.filter((f) => f.level === 'warning').length;
+      const info = fs.filter((f) => f.level === 'info').length;
+      const el = document.createElement('div');
+      el.className = 'page-item';
+      el.setAttribute('data-page', i);
+      el.innerHTML = '<span class="pg-num">Лист ' + (i + 1) + '</span><span class="pg-meta">' +
+        (err ? '<span class="badge err">' + err + '</span>' : '') +
+        (warn ? '<span class="badge warn">' + warn + '</span>' : '') +
+        (info ? '<span class="badge info">' + info + '</span>' : '') +
+        (!fs.length ? '<span class="badge ok">✓</span>' : '') + '</span>';
+      el.addEventListener('click', () => { p.wrap.scrollIntoView({ behavior: 'smooth', block: 'start' }); setActivePage(i); });
+      frag.appendChild(el);
+    });
+    wrap.innerHTML = '';
+    wrap.appendChild(frag);
+  }
+  function setActivePage(i) {
+    document.querySelectorAll('.page-item').forEach((el) => el.classList.toggle('active', +el.getAttribute('data-page') === i));
+  }
+  let scrollBound = false;
+  function wireViewerScroll() {
+    if (scrollBound) return; scrollBound = true;
+    const v = $('#viewer');
+    let raf = null;
+    v.addEventListener('scroll', () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        const vTop = v.getBoundingClientRect().top;
+        let best = 0, bestD = Infinity;
+        state.render.pages.forEach((p, i) => {
+          const d = Math.abs(p.wrap.getBoundingClientRect().top - vTop - 10);
+          if (d < bestD) { bestD = d; best = i; }
+        });
+        setActivePage(best);
+      });
+    }, { passive: true });
+  }
+
+  // --------------- исправление и выгрузка .docx
+  function exportFixed() {
+    if (!state.buffer || !state.doc) return;
+    const opts = {
+      font: $('#opt-font').checked, align: $('#opt-align').checked, indent: $('#opt-indent').checked,
+      spacing: $('#opt-spacing').checked, page: $('#opt-page').checked, dash: $('#opt-dash').checked,
+      titleEnd: state.titleEnd || 0,
+    };
+    try {
+      const meta = state.doc.blocks.map((b, i) => ({ kind: b.kind, role: state.roles[i] ? state.roles[i].role : 'body' }));
+      const bytes = STUFix.buildFixed(state.buffer, meta, opts);
+      const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = state.fileName.replace(/\.docx$/i, '') + ' (исправлено).docx';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      $('#fix-dialog').style.display = 'none';
+    } catch (e) {
+      alert('Не удалось собрать файл.\n' + (e && e.message ? e.message : e));
+    }
+  }
+
+  // ------------------------------------------------------------------ utils
+  function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+  // Свернуть / развернуть боковую панель.
+  function setCollapsed(side, on) {
+    const ws = $('#workspace');
+    ws.classList.toggle(side + '-collapsed', !!on);
+    const panel = side === 'left' ? $('#panel-left') : $('#panel-right');
+    if (panel) panel.classList.toggle('collapsed', !!on);
+    const btn = document.querySelector('.panel-toggle[data-side="' + side + '"]');
+    if (btn) btn.textContent = side === 'left' ? (on ? '›' : '‹') : (on ? '‹' : '›');
+    try { localStorage.setItem('stu-collapse-' + side, on ? '1' : '0'); } catch (e) { }
+  }
+
+  // Синхронный прогон (для автотеста: результат готов к моменту загрузки страницы).
+  function processSync(name, buf) {
+    state.fileName = name;
+    state.buffer = buf;
+    try {
+      const doc = STUDocx.parse(buf); state.doc = doc;
+      const det2 = STURules.detectDocType(doc); state.autoType = det2;
+      if (det2 && det2.type && !state.manualType) state.docType = det2.type;
+      syncTypeChips();
+      const res = STURules.runChecks(doc, state.docType);
+      state.roles = res.roles; state.findings = res.findings;
+      state.titleEnd = res.titleEnd;
+      showWorkspace();
+      $('#topfile').textContent = name;
+      const rnd = STURender.renderDocument(doc, res.roles, res.findings, $('#viewer'));
+      state.render = rnd;
+      buildFileMeta(doc);
+      buildFindings();
+      buildPages();
+      wireViewerScroll();
+      saveLast(name, buf, state.docType);
+      saveHistory(name, buf, state.docType);
+    } catch (e) { console.error(e); document.title = 'ОШИБКА: ' + e.message; }
+  }
+
+  // ------------------------------------------------------------------ init UI
+  function init() {
+    applyTheme(localStorage.getItem('stu-theme') || 'light');
+    $('#theme-btn').addEventListener('click', toggleTheme);
+
+    // чипы типа документа
+    const tc = $('#type-chips');
+    DOC_TYPES.forEach(([id, label]) => {
+      const b = document.createElement('button');
+      b.className = 'type-chip' + (id === state.docType ? ' active' : '');
+      b.textContent = label; b.setAttribute('data-type', id);
+      b.addEventListener('click', () => {
+        state.docType = id;
+        state.manualType = true;
+        tc.querySelectorAll('.type-chip').forEach((x) => x.classList.toggle('active', x === b));
+        if (state.doc) rerun();
+      });
+      tc.appendChild(b);
+    });
+
+    // dropzone
+    const drop = $('#drop-card');
+    const input = $('#file-input');
+    $('#pick-btn').addEventListener('click', () => input.click());
+    drop.addEventListener('click', (e) => { if (e.target === drop || e.target.classList.contains('drop-icon')) input.click(); });
+    input.addEventListener('change', () => { if (input.files[0]) handleFile(input.files[0]); input.value = ''; });
+    ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('dragover'); }));
+    ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('dragover'); }));
+
+    // окно: подсветка и приём файла в любом месте (в т.ч. на экране результата)
+    const overlay = $('#drop-overlay');
+    let dragDepth = 0;
+    window.addEventListener('dragover', (e) => e.preventDefault());
+    window.addEventListener('dragenter', (e) => {
+      if (e.dataTransfer && Array.from(e.dataTransfer.types || []).indexOf('Files') >= 0) { dragDepth++; overlay.style.display = 'flex'; }
+    });
+    window.addEventListener('dragleave', () => { dragDepth--; if (dragDepth <= 0) { dragDepth = 0; overlay.style.display = 'none'; } });
+    window.addEventListener('drop', (e) => {
+      e.preventDefault(); dragDepth = 0; overlay.style.display = 'none';
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) handleFile(f);
+    });
+
+    // фильтры
+    document.querySelectorAll('.filter-chip').forEach((c) => c.addEventListener('click', () => {
+      state.filter = c.getAttribute('data-level');
+      document.querySelectorAll('.filter-chip').forEach((x) => x.classList.toggle('active', x === c));
+      buildFindings();
+    }));
+
+    $('#new-btn').addEventListener('click', () => { state.doc = null; state.render = null; state.buffer = null; $('#viewer').innerHTML = ''; showStart(); $('#file-input').click(); });
+
+    // исправление и выгрузка .docx
+    $('#fix-btn').addEventListener('click', () => { if (state.buffer) $('#fix-dialog').style.display = 'flex'; });
+    $('#fix-cancel').addEventListener('click', () => { $('#fix-dialog').style.display = 'none'; });
+    $('#fix-ok').addEventListener('click', exportFixed);
+    $('#fix-dialog').addEventListener('click', (e) => { if (e.target === $('#fix-dialog')) $('#fix-dialog').style.display = 'none'; });
+
+    // история проверок: очистка
+    const hclear = $('#history-clear');
+    if (hclear) hclear.addEventListener('click', (e) => { e.stopPropagation(); clearHistory(); });
+
+    // сворачивание / разворачивание панелей
+    ['left', 'right'].forEach((side) => {
+      let on = false;
+      try { on = localStorage.getItem('stu-collapse-' + side) === '1'; } catch (e) { }
+      setCollapsed(side, on);
+      const head = side === 'left' ? $('#head-left') : $('#head-right');
+      if (head) head.addEventListener('click', () => setCollapsed(side, !$('#workspace').classList.contains(side + '-collapsed')));
+    });
+    try {
+      const c = new URLSearchParams(location.search).get('collapse');
+      if (c) c.split(',').forEach((s) => { if (s === 'left' || s === 'right') setCollapsed(s, true); });
+    } catch (e) { }
+
+    // «Новый документ» – вернуться к началу и забыть сохранённый файл
+    $('#back-btn').addEventListener('click', () => {
+      state.doc = null; state.render = null; state.buffer = null; $('#viewer').innerHTML = '';
+      showStart(); idbDel('last');
+    });
+
+    // восстановление последнего проверенного файла после обновления страницы
+    const hasFileParam = new URLSearchParams(location.search).get('f');
+    if (!hasFileParam) {
+      idbGet('last').then((rec) => {
+        if (!rec || !rec.buf) return;
+        if (rec.docType && DOC_TYPES.some((d) => d[0] === rec.docType)) {
+          state.docType = rec.docType;
+          document.querySelectorAll('.type-chip').forEach((x) => x.classList.toggle('active', x.getAttribute('data-type') === rec.docType));
+        }
+        showProcessing(rec.name || 'документ');
+        processBuffer(rec.name || 'документ.docx', rec.buf);
+      }).catch(() => { });
+    }
+
+    showStart();
+
+    // Открытие файла по ссылке (?f=путь) – удобно для проверки и встраивания.
+    try {
+      const f = new URLSearchParams(location.search).get('f');
+      if (f) {
+        const t = new URLSearchParams(location.search).get('type');
+        if (t && DOC_TYPES.some((d) => d[0] === t)) state.docType = t;
+        const sync = new URLSearchParams(location.search).get('sync') === '1';
+        if (sync) {
+          const xhr = new XMLHttpRequest();
+          xhr.open('GET', f, false);
+          xhr.overrideMimeType('text/plain; charset=x-user-defined');
+          xhr.send(null);
+          let bin = xhr.responseText, u8 = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i) & 0xff;
+          processSync(f.split('/').pop(), u8.buffer);
+        } else {
+          showProcessing(f);
+          fetch(f, { cache: 'no-cache' })
+            .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+            .then((b) => processBuffer(f.split('/').pop(), b))
+            .catch((e) => { alert('Не удалось открыть файл: ' + e.message); showStart(); });
+        }
+      }
+    } catch (e) { }
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+})();

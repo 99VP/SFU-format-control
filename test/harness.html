@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8"><title>harness</title>
+<link rel="stylesheet" href="../css/styles.css">
+<style>#log{font:13px/1.5 ui-monospace,monospace;white-space:pre-wrap;padding:16px;color:#111;background:#fff}body{overflow:auto}</style>
+</head><body>
+<div id="log"></div>
+<script src="../vendor/fflate.min.js"></script>
+<script src="../js/docx.js"></script>
+<script src="../js/rules.js"></script>
+<script src="../js/render.js"></script>
+<script src="../js/fix.js"></script>
+<script>
+const log = (m) => { document.getElementById('log').textContent += m + '\n'; };
+window.onerror = (m, s, l, c, e) => { log('JS ERROR: ' + m + ' @' + l + ':' + c + '\n' + (e && e.stack || '')); };
+try {
+  const file = new URLSearchParams(location.search).get('f') || 'sample.docx';
+  const type = new URLSearchParams(location.search).get('type') || 'otchet';
+  const xhr = new XMLHttpRequest(); xhr.open('GET', file, false);
+  xhr.overrideMimeType('text/plain; charset=x-user-defined'); xhr.send();
+  let bin = xhr.responseText, u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i) & 0xff;
+  log('файл: ' + file + '  байт: ' + u8.length);
+  const t0 = performance.now();
+  const doc = STUDocx.parse(u8.buffer);
+  log('разбор: блоков ' + doc.blocks.length + ', секций ' + doc.sections.length + ', базовый шрифт «' + doc.baseFont + '», картинок ' + Object.keys(doc.media).length + '  (' + (performance.now() - t0).toFixed(0) + ' мс)');
+  const res = STURules.runChecks(doc, type);
+  const counts = {}; res.findings.forEach(f => counts[f.level] = (counts[f.level] || 0) + 1);
+  log('тип: ' + type + '  замечаний: ' + JSON.stringify(counts) + ', всего ' + res.findings.length);
+  log('titleEnd=' + res.titleEnd + '  forcedPageStarts=[' + [...res.forcedPageStarts].slice(0, 25).join(',') + ']');
+  const div = document.createElement('div'); div.className = 'viewer'; div.style.height = '1100px'; document.body.appendChild(div);
+  const rnd = STURender.renderDocument(doc, res.roles, res.findings, div);
+  log('страниц в развёртке: ' + rnd.pages.length);
+  const viewPage = new URLSearchParams(location.search).get('view');
+  if (viewPage != null) {
+    const p = rnd.pages[Math.min(+viewPage, rnd.pages.length - 1)];
+    div.style.position = 'fixed'; div.style.inset = '0'; div.style.height = '100vh'; div.style.zIndex = '9';
+    if (p) { div.scrollTop = p.wrap.offsetTop - 10; }
+  }
+  log('--- замечания (уровень, блок, лист, текст, рекомендация) ---');
+  const catFilter = new URLSearchParams(location.search).get('cat');
+  (catFilter ? res.findings.filter((f) => f.category === catFilter) : res.findings).slice(0, 30).forEach(f => log('[' + f.level + '] b' + f.blockIndex + ' p' + (f.page == null ? '-' : f.page + 1) + ' | ' + f.title + ': ' + f.detail + ' → ' + (f.recommend || '') + ' | ' + f.ref));
+  const dump = new URLSearchParams(location.search).get('dump');
+  if (dump) {
+    const [a, b] = dump.split(',').map(Number);
+    log('--- дамп блоков ' + a + '..' + (b || a + 30) + ' ---');
+    for (let i = a; i < (b || a + 30); i++) {
+      const bl = doc.blocks[i]; if (!bl) break;
+      log(i + ' [' + res.roles[i].role + (res.roles[i].structKey ? ':' + res.roles[i].structKey : '') + '] pb=' + (!!bl.pageBreakBefore) + ' ind=' + JSON.stringify(bl.ind) + ' sp=' + JSON.stringify(bl.spacing) + ' jc=' + bl.jc + ' | ' + JSON.stringify((bl.text || '').slice(0, 55)));
+    }
+  }
+  const img = new URLSearchParams(location.search).get('img');
+  if (img) {
+    log('--- картинки --- media: ' + Object.keys(doc.media).join(', '));
+    const scanPara = (bl, tag) => {
+      for (const r of bl.runs || []) for (const p of (r.parts || [])) if (p.type === 'drawing') {
+        const rel = p.embed ? doc.rels[p.embed] : null;
+        const key = rel ? rel.replace(/^\/?word\//, '').replace(/^media\//, 'media/') : null;
+        log(tag + ' embed=' + p.embed + ' rel=' + rel + ' key=' + key + ' src=' + (key && doc.media[key] ? 'ok' : 'НЕТ') + ' cx=' + p.cx);
+      }
+    };
+    for (let i = 0; i < doc.blocks.length; i++) {
+      const bl = doc.blocks[i];
+      if (bl.kind === 'p' && bl.hasDrawing) scanPara(bl, 'p b' + i);
+      if (bl.kind === 'table') for (const row of bl.rows) for (const c of row.cells) for (const cp of c.paras) scanPara(cp, 'tbl b' + i);
+    }
+    log('отрисовано img.stu-img: ' + div.querySelectorAll('img.stu-img').length + ', плейсхолдеров: ' + div.querySelectorAll('.stu-img-ph').length);
+  }
+  const hf = new URLSearchParams(location.search).get('hf');
+  if (hf) {
+    log('--- колонтитулы --- секций: ' + doc.sections.length);
+    doc.sections.forEach((s, i) => {
+      const names = Object.keys(s.footers || {});
+      log('секция ' + i + ' titlePg=' + !!s.titlePg + ' footers=[' + names.map((k) => k + ':hasField=' + (s.footers[k] && s.footers[k].hasPageField) + ',text="' + (s.footers[k] && s.footers[k].text) + '"').join(' | ') + ']');
+    });
+    log('footerNumber-страниц в развёртке: ' + div.querySelectorAll('.stu-footer').length);
+  }
+  const tabsDbg = new URLSearchParams(location.search).get('tabs');
+  if (tabsDbg) {
+    const el = Array.from(div.querySelectorAll('.stu-p')).find((e) => e.textContent.indexOf('номер группы') >= 0);
+    if (el) {
+      const t = el.querySelectorAll('.stu-tab');
+      log('табы: ' + t.length + ' | ширины=[' + Array.from(t).map((x) => x.style.width).join(', ') + ']');
+    }
+    try {
+      const d = (STURender._dbg || []).filter((z) => z.text.indexOf('номер группы') >= 0);
+      log('DBG: ' + JSON.stringify(d));
+    } catch (e) { log('DBG error ' + e.message); }
+    for (let i = 0; i < doc.blocks.length; i++) {
+      const b = doc.blocks[i];
+      if (b.kind === 'p' && (b.text || '').indexOf('номер группы') >= 0) {
+        log('блок ' + i + ' jc=' + b.jc + ' tabs=' + JSON.stringify(b.tabs) + ' runs=' + JSON.stringify((b.runs || []).map((r) => (r.parts || []).map((p) => p.type))));
+        break;
+      }
+    }
+  }
+  const fix = new URLSearchParams(location.search).get('fix');
+  if (fix) {
+    try {
+      window.STUFIX_CHECK = function (s) { var t = new URLSearchParams(location.search).get('chk'); if (t && s === t) throw new Error('reached ' + s); };
+      const meta = doc.blocks.map((b, i2) => ({ kind: b.kind, role: res.roles[i2] ? res.roles[i2].role : 'body' }));
+      const t0 = performance.now();
+      const bytes = STUFix.buildFixed(u8.buffer, meta, { font: true, align: true, indent: true, spacing: true, page: true, dash: true });
+      log('--- исправление --- собрано байт: ' + bytes.length + ' за ' + (performance.now() - t0).toFixed(0) + ' мс');
+      if (new URLSearchParams(location.search).get('fixstep') !== 'build') {
+        const doc2 = STUDocx.parse(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+        log('повторный разбор: блоков ' + doc2.blocks.length + ' (было ' + doc.blocks.length + '), секций ' + doc2.sections.length);
+        let tnr = 0, other = 0, titleTnr = 0, titleOther = 0;
+        for (let bi = 0; bi < doc2.blocks.length; bi++) {
+          const b = doc2.blocks[bi];
+          if (b.kind !== 'p') continue;
+          const isTitle = bi < res.titleEnd;
+          for (const r of b.runs || []) {
+            if (!(r.text || '').trim()) continue;
+            const isTnr = /times new roman/i.test(r.font || '');
+            if (isTitle) { if (isTnr) titleTnr++; else titleOther++; }
+            else { if (isTnr) tnr++; else other++; }
+          }
+        }
+        log('основной текст: TNR ' + tnr + ', других ' + other + ' | титул: TNR ' + titleTnr + ', других ' + titleOther + ' (titleEnd=' + res.titleEnd + ')');
+        const sec = doc2.sections[0];
+        log('поля после правки: ' + JSON.stringify(sec.margin) + ' размер ' + sec.w + 'x' + sec.h);
+      }
+    } catch (e) { log('FIX ERROR: ' + e.message + '\n' + (e.stack || '')); }
+  }
+} catch (e) { log('CATCH: ' + e.message + '\n' + e.stack); }
+</script>
+</body></html>

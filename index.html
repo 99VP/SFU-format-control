@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>СТУ-Нормоконтроль</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20x='2'%20y='2'%20width='60'%20height='60'%20rx='15'%20fill='%23C2603F'/%3E%3Cpath%20d='M18%2033.5%2027.5%2043%2046%2021'%20fill='none'%20stroke='%23fff'%20stroke-width='7.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="apple-touch-icon" href="favicon.svg" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- ============================================================ топбар -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.6l4.4 4.4L19 7.2"></path></svg>
+        </span>
+        <h1>СТУ-Нормоконтроль</h1>
+        <span class="sub">СТУ 7.5–07–2021</span>
+      </div>
+      <div class="spacer"></div>
+      <span class="file-name" id="topfile"></span>
+      <button class="btn" id="back-btn" title="Вернуться к началу" style="display:none">← Новый документ</button>
+      <button class="btn" id="new-btn" title="Проверить другой файл">Другой файл</button>
+      <button class="btn primary" id="fix-btn" title="Исправить и скачать .docx" style="display:none">Исправить .docx</button>
+      <button class="icon-btn" id="theme-btn" title="Сменить тему">
+        <svg id="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="4.2"></circle>
+          <path d="M12 2v2.4M12 19.6V22M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M2 12h2.4M19.6 12H22M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7"></path>
+        </svg>
+        <svg id="ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:none">
+          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path>
+        </svg>
+      </button>
+    </header>
+
+    <!-- ==================================================== стартовый экран -->
+    <section class="screen" id="screen-start">
+      <div class="drop-layer">
+        <div class="drop-col">
+          <div class="drop-card" id="drop-card">
+          <div class="drop-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 3v5h5"></path>
+              <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"></path>
+              <path d="M12 17v-6M9.5 13.5 12 11l2.5 2.5"></path>
+            </svg>
+          </div>
+          <h2 class="drop-title">Закиньте документ для проверки</h2>
+          <p class="drop-text">Перетащите сюда файл Word<br>или выберите его на диске</p>
+          <div class="types" id="type-chips">
+            <span class="types-label">Вид документа</span>
+          </div>
+          <button class="btn primary" id="pick-btn">Выбрать файл Word</button>
+          <div class="drop-hint-inline">Форматы .docx и .doc</div>
+          <input type="file" id="file-input" accept=".docx,.doc" hidden />
+          </div>
+          <div class="history-card" id="history-card" style="display:none">
+            <div class="history-head">
+              <span class="history-title">История проверок</span>
+              <button class="history-clear" id="history-clear" title="Очистить историю">Очистить</button>
+            </div>
+            <div id="history-list"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================== обработка -->
+    <section class="screen" id="screen-processing" style="display:none">
+      <div class="drop-layer">
+        <div class="flow-card">
+          <div class="flow-head">
+            <div class="wave-ico"><span></span><span></span><span></span><span></span><span></span></div>
+            <div>
+              <h2>Обработка документа</h2>
+              <div class="fname" id="proc-name"></div>
+            </div>
+          </div>
+          <div class="progress"><i id="proc-bar"></i></div>
+          <ul class="steps" id="proc-steps"></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================= результат -->
+    <section class="workspace" id="workspace">
+      <aside class="panel left" id="panel-left">
+        <div class="panel-head" id="head-left">
+          <span class="panel-title">Замечания</span>
+          <button class="panel-toggle" data-side="left" title="Свернуть / развернуть">‹</button>
+        </div>
+        <div class="panel-body">
+          <div class="summary">
+            <div class="sum-card err"><b id="sum-err">0</b><span>ошибки</span></div>
+            <div class="sum-card warn"><b id="sum-warn">0</b><span>предупр.</span></div>
+            <div class="sum-card info"><b id="sum-info">0</b><span>инфо</span></div>
+          </div>
+          <div class="filters">
+            <span class="filter-chip active" data-level="all">Все</span>
+            <span class="filter-chip" data-level="error">Ошибки</span>
+            <span class="filter-chip" data-level="warning">Предупреждения</span>
+            <span class="filter-chip" data-level="info">Инфо</span>
+            <span class="filter-chip" data-level="ai">ИИ</span>
+          </div>
+          <div class="find-list" id="find-list"></div>
+        </div>
+      </aside>
+
+      <main class="viewer" id="viewer"></main>
+
+      <aside class="panel right" id="panel-right">
+        <div class="panel-head" id="head-right">
+          <span class="panel-title">Листы</span>
+          <button class="panel-toggle" data-side="right" title="Свернуть / развернуть">›</button>
+        </div>
+        <div class="panel-body">
+          <div class="file-meta" id="file-meta"></div>
+          <div id="page-list"></div>
+        </div>
+      </aside>
+    </section>
+  </div>
+
+  <!-- ================================================== исправление .docx -->
+  <div class="modal-backdrop" id="fix-dialog" style="display:none">
+    <div class="modal">
+      <h3>Исправить и скачать .docx</h3>
+      <p class="modal-hint">Word откроет файл штатно; исправляется только word/document.xml.</p>
+      <label class="opt"><input type="checkbox" id="opt-font" checked> Шрифт Times New Roman, 14</label>
+      <label class="opt"><input type="checkbox" id="opt-align" checked> Выравнивание по ширине</label>
+      <label class="opt"><input type="checkbox" id="opt-indent" checked> Абзацный отступ 12,5 мм</label>
+      <label class="opt"><input type="checkbox" id="opt-spacing" checked> Межстрочный интервал 1,0 / 1,5</label>
+      <label class="opt"><input type="checkbox" id="opt-page" checked> Формат А4 и поля</label>
+      <label class="opt"><input type="checkbox" id="opt-dash" checked> Тире в диапазонах чисел</label>
+      <div class="modal-actions">
+        <button class="btn" id="fix-cancel">Отмена</button>
+        <button class="btn primary" id="fix-ok">Скачать .docx</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="drop-overlay" id="drop-overlay" style="display:none"><span>Отпустите файл, чтобы проверить</span></div>
+
+  <script src="vendor/fflate.min.js"></script>
+  <script src="js/docx.js"></script>
+  <script src="js/rules.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/fix.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

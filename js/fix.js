@@ -170,12 +170,48 @@
     last.textContent = s.replace(/\s+$/, '') + '.';
   }
 
-  function fixParagraph(p, role, o, bi) {
+  // Разрыв страницы перед разделом/структурным элементом и удаление лишних пустых абзацев.
+  function addPageBreak(p) {
+    const pPr = ensure(p, 'pPr', null, true);
+    ensure(pPr, 'pageBreakBefore', PPR_ORDER);
+  }
+  function isEmptyPara(p) {
+    if (p.localName !== 'p') return false;
+    for (const t of p.getElementsByTagName('w:t')) if ((t.textContent || '').trim()) return false;
+    if (p.getElementsByTagName('w:drawing').length || p.getElementsByTagName('w:pict').length || p.getElementsByTagName('w:object').length) return false;
+    return true;
+  }
+  function removeEmptyBefore(container, el) {
+    let prev = el.previousElementSibling;
+    while (prev && isEmptyPara(prev)) { const rm = prev; prev = prev.previousElementSibling; container.removeChild(rm); }
+  }
+
+  // Пунктуация позиций перечисления: не последняя – «;», последняя – «.».
+  function fixListEnd(p, isLast) {
+    const ts = [];
+    (function walk(n) {
+      for (const c of n.childNodes) {
+        if (c.nodeType !== 1) continue;
+        if (c.localName === 't') ts.push(c);
+        else if (c.localName !== 'rPr') walk(c);
+      }
+    })(p);
+    if (!ts.length) return;
+    const last = ts[ts.length - 1]; const s = last.textContent;
+    const desired = isLast ? '.' : ';';
+    if (!s) return;
+    if (/[.;]$/.test(s)) { if (s.slice(-1) !== desired) last.textContent = s.slice(0, -1) + desired; return; }
+    if (/[!?]$/.test(s)) return;
+    last.textContent = s.replace(/\s+$/, '') + desired;
+  }
+
+  function fixParagraph(p, role, o, bi, isLast) {
     const a = roleOptions(role, o);
     for (const r of p.getElementsByTagName('w:r')) fixRun(r, a);
     if (o.emph && a.clean) clearEmphasis(p);
     if (o.emph && (role === 'list' || role === 'manualList')) fixListCase(p, role);
     if (o.marker && role === 'manualList') fixMarker(p);
+    if (o.listEnd && (role === 'list' || role === 'manualList')) fixListEnd(p, isLast);
     if (o.toc && role === 'toc') fixTocCase(p);
     if (o.sources && bi != null && o.sources.has(bi)) fixSourceEnd(p);
     const pPr = ensure(p, 'pPr', null, true);
@@ -234,6 +270,8 @@
         if (BOUND.test(prev) || BOUND.test(next)) return m;
         return a + '\u2013' + b;
       });
+      // дефис как знак препинания между словами («Курс - это …») → короткое тире
+      after = after.replace(/ - /g, (m, idx) => (urls.some((u) => idx >= u[0] && idx < u[1]) ? m : ' \u2013 '));
       if (after !== before) t.textContent = after;
     }
   }
@@ -307,7 +345,13 @@
         if (el.localName === 'p') {
           const m = meta[idx]; const bi = idx; idx++;
           doInserts(bi, 'before', container, el);
-          if (bi >= skipBefore) fixParagraph(el, m ? m.role : 'body', opts, bi);
+          const next = meta[bi + 1];
+          const isLast = !(next && (next.role === 'list' || next.role === 'manualList'));
+          if (bi >= skipBefore) fixParagraph(el, m ? m.role : 'body', opts, bi, isLast);
+          if (bi >= skipBefore && opts.sectionBreak && m && (m.role === 'structural' || (m.role === 'heading' && m.level === 1))) {
+            addPageBreak(el);
+            if (opts.cleanEmpties) removeEmptyBefore(container, el);
+          }
           if (bi >= skipBefore && opts.toc && opts.tocPages && opts.tocPages[bi] != null) fixTocPage(el, opts.tocPages[bi]);
           doInserts(bi, 'after', container, el);
         } else if (el.localName === 'tbl') {

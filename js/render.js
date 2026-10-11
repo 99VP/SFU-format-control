@@ -439,14 +439,24 @@
   }
 
   // --------------------------------------------------------------- grouping
-  function makeItems(doc, forcedPageStarts) {
+  function makeItems(doc, forcedPageStarts, roles) {
     const items = [];
     const blocks = doc.blocks;
+    const roleOf = (i) => (roles && roles[i] ? roles[i].role : null);
     const sectionStarts = new Set(doc.sections.map((s, i) => (i > 0 ? s.startIndex : -1)));
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i];
       if (b.kind === 'p' && /^Таблица\s+/i.test(b.text || '') && blocks[i + 1] && blocks[i + 1].kind === 'table') {
         items.push({ indices: [i, i + 1], forcedBefore: forcedPageStarts.has(i) || !!b.pageBreakBefore, sectionStart: sectionStarts.has(i) });
+        i++; continue;
+      }
+      // Рисунок и подпись держим вместе; подпись всегда под рисунком.
+      if (roleOf(i) === 'image' && roleOf(i + 1) === 'figureCaption') {
+        items.push({ indices: [i, i + 1], forcedBefore: forcedPageStarts.has(i) || !!b.pageBreakBefore, sectionStart: sectionStarts.has(i) });
+        i++; continue;
+      }
+      if (roleOf(i) === 'figureCaption' && roleOf(i + 1) === 'image') {
+        items.push({ indices: [i + 1, i], forcedBefore: forcedPageStarts.has(i) || !!b.pageBreakBefore, sectionStart: sectionStarts.has(i) });
         i++; continue;
       }
       const all = [];
@@ -579,11 +589,11 @@
     }
 
     const forcedPageStarts = global.STURules.computeForcedPageStarts(doc);
-    const items = makeItems(doc, forcedPageStarts);
-    // Каждый структурный элемент начинают с новой страницы (СТУ, п. 6.1).
+    const items = makeItems(doc, forcedPageStarts, roles);
+    // Каждый структурный элемент и каждый раздел (уровень 1) начинают с новой страницы.
     for (const it of items) {
       const r = roles[it.indices[0]];
-      if (r && r.role === 'structural') it.forcedBefore = true;
+      if (r && (r.role === 'structural' || (r.role === 'heading' && r.level === 1))) it.forcedBefore = true;
     }
     const pages = [];
     const pageForBlock = {};

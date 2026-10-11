@@ -407,6 +407,9 @@
       text: $('#opt-text') ? $('#opt-text').checked : false,
       emph: $('#opt-emph') ? $('#opt-emph').checked : false,
       marker: $('#opt-marker') ? $('#opt-marker').checked : false,
+      listEnd: $('#opt-marker') ? $('#opt-marker').checked : false,
+      sectionBreak: $('#opt-section') ? $('#opt-section').checked : false,
+      cleanEmpties: true,
       titleEnd: state.titleEnd || 0,
     };
     // Новые номера страниц для содержания (по построенной развёртке)
@@ -449,7 +452,7 @@
     }
     opts.sources = src;
     try {
-      const meta = state.doc.blocks.map((b, i) => ({ kind: b.kind, role: state.roles[i] ? state.roles[i].role : 'body' }));
+      const meta = state.doc.blocks.map((b, i) => ({ kind: b.kind, role: state.roles[i] ? state.roles[i].role : 'body', level: state.roles[i] ? state.roles[i].level : 0 }));
       const bytes = STUFix.buildFixed(state.buffer, meta, opts);
       const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
       const a = document.createElement('a');

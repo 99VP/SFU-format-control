@@ -52,12 +52,31 @@
   }
 
   // Убирает подчёркивание и приводит цвет текста к чёрному (СТУ, п. 7.1.1).
+  // Важно: подчёркивание может задаваться стилем (Hyperlink), поэтому не
+  // удаляем w:u, а явно ставим w:val="none".
   function clearEmphasis(p) {
     for (const run of p.getElementsByTagName('w:r')) {
       const rPr = child(run, 'rPr'); if (!rPr) continue;
-      const u = child(rPr, 'u'); if (u) rPr.removeChild(u);
-      const col = child(rPr, 'color'); if (col) setW(col, 'val', '000000');
+      const u = ensure(rPr, 'u', RPR_ORDER); setW(u, 'val', 'none');
+      const col = ensure(rPr, 'color', RPR_ORDER); setW(col, 'val', '000000');
     }
+  }
+
+  // Маркер перечисления: кружок/точку заменяем на тире.
+  function fixMarker(p) {
+    const ts = [];
+    (function walk(n) {
+      for (const c of n.childNodes) {
+        if (c.nodeType !== 1) continue;
+        if (c.localName === 't') ts.push(c);
+        else if (c.localName !== 'rPr') walk(c);
+      }
+    })(p);
+    if (!ts.length) return;
+    const t0 = ts[0];
+    const s = t0.textContent;
+    const m = s.match(/^([ \t]*)([-–—•·◦○▪∙*])(\s+)/);
+    if (m && m[2] !== '–') t0.textContent = m[1] + '\u2013' + s.slice(m[1].length + m[2].length);
   }
 
   // В содержании: заголовок делаем «с первой прописной, остальные строчные».
@@ -110,11 +129,36 @@
     }
   }
 
+  // Маркеры маркированных списков (кружки, точки) меняем на тире в numbering.xml.
+  function fixNumberingXml(files, enc) {
+    if (!files['word/numbering.xml']) return;
+    const dom = new DOMParser().parseFromString(new TextDecoder('utf-8').decode(files['word/numbering.xml']), 'application/xml');
+    const lvls = dom.getElementsByTagName('w:lvl');
+    let changed = false;
+    for (const lvl of lvls) {
+      const fmt = child(lvl, 'numFmt');
+      if (!fmt || fmt.getAttribute('w:val') !== 'bullet') continue;
+      const lt = child(lvl, 'lvlText');
+      if (!lt) continue;
+      const val = lt.getAttribute('w:val') || '';
+      if (val === '\u2013' || val === '-') continue;
+      lt.setAttribute('w:val', '\u2013');
+      let rPr = child(lvl, 'rPr');
+      if (!rPr) { rPr = dom.createElementNS(WNS, 'w:rPr'); lvl.appendChild(rPr); }
+      let rf = child(rPr, 'rFonts');
+      if (!rf) { rf = dom.createElementNS(WNS, 'w:rFonts'); rPr.insertBefore(rf, rPr.firstChild); }
+      setW(rf, 'ascii', 'Times New Roman'); setW(rf, 'hAnsi', 'Times New Roman'); setW(rf, 'cs', 'Times New Roman');
+      changed = true;
+    }
+    if (changed) files['word/numbering.xml'] = enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + new XMLSerializer().serializeToString(dom.documentElement));
+  }
+
   function fixParagraph(p, role, o) {
     const a = roleOptions(role, o);
     for (const r of p.getElementsByTagName('w:r')) fixRun(r, a);
     if (o.emph && a.clean) clearEmphasis(p);
     if (o.emph && (role === 'list' || role === 'manualList')) fixListCase(p, role);
+    if (o.marker && role === 'manualList') fixMarker(p);
     if (o.toc && role === 'toc') fixTocCase(p);
     const pPr = ensure(p, 'pPr', null, true);
     if (a.align) setW(ensure(pPr, 'jc', PPR_ORDER), 'val', 'both');
@@ -253,6 +297,8 @@
     chk('text');
     if (opts.text) fixCitations(dom);
     chk('cite');
+    if (opts.marker) fixNumberingXml(files, enc);
+    chk('markers');
     const out = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + new XMLSerializer().serializeToString(dom.documentElement);
     chk('serialize');
     files['word/document.xml'] = enc.encode(out);

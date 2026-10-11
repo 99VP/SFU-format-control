@@ -149,7 +149,16 @@
       const img = document.createElement('img');
       img.src = src; img.className = 'stu-img';
       img.style.verticalAlign = 'bottom';
-      if (part.cx) img.style.maxWidth = Math.min(part.cx / 914400 * 96, MM(160)) + 'px';
+      // Размер задаём сразу из OOXML (cx/cy), иначе картинка получит высоту
+      // только после декодирования и сдвинет текст вниз (текст обрежется).
+      let wpx = null, hpx = null;
+      if (part.cx) wpx = (part.cx / 914400) * 96;
+      if (part.cy) hpx = (part.cy / 914400) * 96;
+      const limit = Math.min(MM(160), ctx.textWidthPx || MM(160));
+      if (wpx && wpx > limit) { if (hpx) hpx = hpx * (limit / wpx); wpx = limit; }
+      if (wpx) img.style.width = wpx + 'px';
+      else img.style.maxWidth = limit + 'px';
+      if (hpx) img.style.height = hpx + 'px';
       container.appendChild(img);
     } else {
       const ph = document.createElement('span'); ph.className = 'stu-img-ph'; ph.textContent = '\u25A3 рисунок';
@@ -494,8 +503,9 @@
     const host = document.createElement('div');
     host.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden;';
     host.style.width = widthPx + 'px';
+    // Важно: клон должен полностью повторять абзац (в т.ч. абзацный отступ),
+    // иначе замер врёт и голова не влезает (обрезается последняя строка).
     const clone = el.cloneNode(true);
-    clone.style.textIndent = '0';
     host.appendChild(clone); document.body.appendChild(host);
     const cleaves = textLeaves(clone);
     for (const n of cleaves) n.__full = n.nodeValue;

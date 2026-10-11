@@ -95,9 +95,30 @@ try {
         if (getComputedStyle(p).textAlign !== 'center') return;
         const r = document.createRange(); r.selectNodeContents(p);
         const rect = r.getBoundingClientRect();
-        log('центр: текстЦентр=' + Math.round(rect.left + rect.width / 2) + ' центрОбласти=' + Math.round(flowCenter) + ' сдвиг=' + Math.round(rect.left + rect.width / 2 - flowCenter) + ' текст=' + JSON.stringify((p.textContent || '').slice(0, 25)));
+        log('центр: сдвиг=' + Math.round(rect.left + rect.width / 2 - flowCenter) + ' текст=' + JSON.stringify((p.textContent || '').slice(0, 25)));
         n++;
       });
+    }
+  }
+  const pagDbg = new URLSearchParams(location.search).get('pag');
+  if (pagDbg) {
+    log('--- страницы: children / scrollHeight / textH ---');
+    rnd.pages.forEach(function (pg, i) {
+      let maxb = 0;
+      for (const c of pg.flow.children) { const b = c.offsetTop + c.offsetHeight; if (b > maxb) maxb = b; }
+      const over = pg.flow.scrollHeight - Math.round(pg.textH);
+      log('стр ' + (i + 1) + ': детей ' + pg.flow.childElementCount + ' перелив ' + over + ' низ=' + Math.round(maxb) + ' клиентH=' + pg.flow.clientHeight + ' скроллH=' + pg.flow.scrollHeight + (pg.flow.childElementCount === 0 ? ' ПУСТАЯ' : ''));
+    });
+    const from = +(pagDbg.split(',')[0]) || 1, to = +(pagDbg.split(',')[1]) || from;
+    for (let pi = from - 1; pi < Math.min(to, rnd.pages.length); pi++) {
+      const pg = rnd.pages[pi];
+      const flowRect = pg.flow.getBoundingClientRect();
+      const kids = Array.from(pg.flow.children).map(function (c) {
+        const rc = c.getBoundingClientRect();
+        const st = getComputedStyle(c);
+        return 'b' + c.getAttribute('data-block') + '[y' + Math.round(c.offsetTop) + ' h' + Math.round(c.offsetHeight) + ' Δ' + Math.round(rc.bottom - flowRect.bottom) + ' ' + st.display + '/' + st.visibility + '](' + (c.tagName === 'TABLE' ? 'таблица' : JSON.stringify((c.textContent || '').slice(0, 20))) + ')';
+      });
+      log('ЛИСТ ' + (pi + 1) + ': ' + kids.join(' | '));
     }
   }
   const tabsDbg = new URLSearchParams(location.search).get('tabs');

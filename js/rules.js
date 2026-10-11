@@ -1412,7 +1412,11 @@
     for (const ph in phraseCount) {
       if (phraseCount[ph] >= 4) add({ category: 'ai', level: 'info', ai: true, blockIndex: firstAt[ph], title: 'Оборот часто повторяется', detail: `«${ph}» встречается в документе ${phraseCount[ph]} раз(а).`, recommend: 'Замените повторяющийся оборот синонимами или перепишите.', ref: 'Правила русской типографики' });
     }
-    if (notOnlyCount >= 3) add({ category: 'ai', level: 'info', ai: true, blockIndex: notOnlyFirst, title: 'Часто повторяется конструкция «не только ..., но и ...»', detail: `Конструкция встречается в документе ${notOnlyCount} раз(а).`, recommend: 'Разнообразьте формулировки, уберите повторяющийся шаблон.', ref: 'Правила русской типографики' });
+    if (notOnlyCount >= 3 && notOnlyFirst >= 0) {
+      const b0 = blocks[notOnlyFirst];
+      const chars = phraseRanges(b0, 'не только').concat(phraseRanges(b0, 'но и'));
+      add({ category: 'ai', level: 'info', ai: true, blockIndex: notOnlyFirst, chars: chars.length ? chars : undefined, title: 'Часто повторяется конструкция «не только ..., но и ...»', detail: `Конструкция встречается в документе ${notOnlyCount} раз(а).`, recommend: 'Разнообразьте формулировки, уберите повторяющийся шаблон.', ref: 'Правила русской типографики' });
+    }
   }
 
   // Несоответствия оформления по всему документу: указываем конкретное место.

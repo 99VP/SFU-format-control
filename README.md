@@ -21,7 +21,7 @@
 Или через Git:
 
 ```
-git clone https://github.com/99VP/stu-normokontrol.git
+git clone https://github.com/99VP/SFU-format-control.git
 ```
 
 ### Linux
@@ -29,7 +29,7 @@ git clone https://github.com/99VP/stu-normokontrol.git
 1. Кнопка **Code → Download ZIP** и распакуйте, или в терминале:
 
 ```
-git clone https://github.com/99VP/stu-normokontrol.git
+git clone https://github.com/99VP/SFU-format-control.git
 cd stu-normokontrol
 ```
 

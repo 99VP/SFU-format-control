@@ -433,6 +433,21 @@
       }
       opts.tocPages = map;
     }
+    // Пустые строки вокруг рисунков/таблиц (только для тех, что на одном листе).
+    opts.inserts = state.findings.filter((f) => f.blankInsert).map((f) => f.blankInsert);
+    // Индексы записей списка источников (для точки в конце).
+    const src = new Set();
+    {
+      const roles = state.roles || [];
+      let inSrc = false;
+      for (let i = 0; i < state.doc.blocks.length; i++) {
+        const r = roles[i]; if (!r) continue;
+        if (r.role === 'structural' && r.structKey === 'istochniki') { inSrc = true; continue; }
+        if (inSrc && r.role === 'structural') inSrc = false;
+        if (inSrc) src.add(i);
+      }
+    }
+    opts.sources = src;
     try {
       const meta = state.doc.blocks.map((b, i) => ({ kind: b.kind, role: state.roles[i] ? state.roles[i].role : 'body' }));
       const bytes = STUFix.buildFixed(state.buffer, meta, opts);

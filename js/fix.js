@@ -75,7 +75,7 @@
     if (!ts.length) return;
     const t0 = ts[0];
     const s = t0.textContent;
-    const m = s.match(/^([ \t]*)([-–—•·◦○▪∙*])(\s+)/);
+    const m = s.match(/^([ \t]*)([-–—•·◦○▪∙*●■◼◆‣⁃\uf0a7\uf0b7\u25aa\u25cf\u25e6])(\s+)/);
     if (m && m[2] !== '–') t0.textContent = m[1] + '\u2013' + s.slice(m[1].length + m[2].length);
   }
 
@@ -153,13 +153,31 @@
     if (changed) files['word/numbering.xml'] = enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + new XMLSerializer().serializeToString(dom.documentElement));
   }
 
-  function fixParagraph(p, role, o) {
+  // Добавляет точку в конце записи списка источников.
+  function fixSourceEnd(p) {
+    const ts = [];
+    (function walk(n) {
+      for (const c of n.childNodes) {
+        if (c.nodeType !== 1) continue;
+        if (c.localName === 't') ts.push(c);
+        else if (c.localName !== 'rPr') walk(c);
+      }
+    })(p);
+    if (!ts.length) return;
+    const last = ts[ts.length - 1];
+    const s = last.textContent;
+    if (!s || /\.\s*$/.test(s)) return;
+    last.textContent = s.replace(/\s+$/, '') + '.';
+  }
+
+  function fixParagraph(p, role, o, bi) {
     const a = roleOptions(role, o);
     for (const r of p.getElementsByTagName('w:r')) fixRun(r, a);
     if (o.emph && a.clean) clearEmphasis(p);
     if (o.emph && (role === 'list' || role === 'manualList')) fixListCase(p, role);
     if (o.marker && role === 'manualList') fixMarker(p);
     if (o.toc && role === 'toc') fixTocCase(p);
+    if (o.sources && bi != null && o.sources.has(bi)) fixSourceEnd(p);
     const pPr = ensure(p, 'pPr', null, true);
     if (a.align) setW(ensure(pPr, 'jc', PPR_ORDER), 'val', 'both');
     if (a.indent) {
@@ -275,15 +293,28 @@
     const body = dom.documentElement.getElementsByTagName('w:body')[0];
     const skipBefore = opts.titleEnd || 0;   // титульный лист не трогаем
     let idx = 0;
+    const inserts = opts.inserts || [];
+    const doInserts = (bi, where, container, el) => {
+      for (const ins of inserts) {
+        if (ins.at === bi && ins.where === where) {
+          const np = dom.createElementNS(WNS, 'w:p');
+          container.insertBefore(np, where === 'after' ? el.nextSibling : el);
+        }
+      }
+    };
     function walk(container) {
       for (const el of Array.from(container.children)) {
         if (el.localName === 'p') {
           const m = meta[idx]; const bi = idx; idx++;
-          if (bi >= skipBefore) fixParagraph(el, m ? m.role : 'body', opts);
+          doInserts(bi, 'before', container, el);
+          if (bi >= skipBefore) fixParagraph(el, m ? m.role : 'body', opts, bi);
           if (bi >= skipBefore && opts.toc && opts.tocPages && opts.tocPages[bi] != null) fixTocPage(el, opts.tocPages[bi]);
+          doInserts(bi, 'after', container, el);
         } else if (el.localName === 'tbl') {
           const bi = idx; idx++;
+          doInserts(bi, 'before', container, el);
           if (bi >= skipBefore) fixTable(el, opts);
+          doInserts(bi, 'after', container, el);
         } else if (el.localName === 'sdt') { const c = child(el, 'sdtContent'); if (c) walk(c); }
       }
     }

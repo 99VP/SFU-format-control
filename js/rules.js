@@ -1700,20 +1700,20 @@
       // рисунок: перед картинкой и после подписи
       if (b.kind === 'p' && (role.role === 'image')) {
         const prev = blocks[i - 1];
-        if (prev && prev.kind === 'p' && !prev.isEmpty && Math.max(spAfter(prev), spBefore(b)) < 200) add({ category: 'figure', level: 'warning', blockIndex: i, pageRel: [i - 1, i], title: 'Нет пустой строки перед рисунком', detail: 'Перед рисунком нет пустой строки.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку сверху.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
+        if (prev && prev.kind === 'p' && !prev.isEmpty && Math.max(spAfter(prev), spBefore(b)) < 200) add({ category: 'figure', level: 'warning', blockIndex: i, pageRel: [i - 1, i], blankInsert: { at: i, where: 'before' }, title: 'Нет пустой строки перед рисунком', detail: 'Перед рисунком нет пустой строки.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку сверху.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
         const cap = (roles[i + 1] && roles[i + 1].role === 'figureCaption') ? i + 1 : null;
         const afterIdx = cap != null ? cap + 1 : i + 1;
         const nx = blocks[afterIdx];
-        if (nx && nx.kind === 'p' && !nx.isEmpty && Math.max(spAfter(blocks[afterIdx - 1]), spBefore(nx)) < 200) add({ category: 'figure', level: 'warning', blockIndex: cap != null ? cap : i, pageRel: [afterIdx - 1, afterIdx], title: 'Нет пустой строки после рисунка', detail: 'После подписи рисунка сразу идёт текст.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку снизу.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
+        if (nx && nx.kind === 'p' && !nx.isEmpty && Math.max(spAfter(blocks[afterIdx - 1]), spBefore(nx)) < 200) add({ category: 'figure', level: 'warning', blockIndex: cap != null ? cap : i, pageRel: [afterIdx - 1, afterIdx], blankInsert: { at: afterIdx, where: 'before' }, title: 'Нет пустой строки после рисунка', detail: 'После подписи рисунка сразу идёт текст.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку снизу.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
       }
       // таблица: перед подписью и после таблицы
       if (b.kind === 'table') {
         const capIdx = (i - 1 >= 0 && roles[i - 1].role === 'tableCaption') ? i - 1 : null;
         const beforeIdx = capIdx != null ? capIdx - 1 : i - 1;
         const pb = blocks[beforeIdx];
-        if (pb && pb.kind === 'p' && !pb.isEmpty && Math.max(spAfter(pb), capIdx != null ? spBefore(blocks[capIdx]) : spBefore(b)) < 200) add({ category: 'table', level: 'warning', blockIndex: capIdx != null ? capIdx : i, pageRel: [beforeIdx, capIdx != null ? capIdx : i], title: 'Нет пустой строки перед таблицей', detail: 'Перед таблицей нет пустой строки.', recommend: 'Отделяйте таблицу от текста интервалом в одну строку.', ref: 'СТУ 7.5–07–2021, п. 7.7.2' });
+        if (pb && pb.kind === 'p' && !pb.isEmpty && Math.max(spAfter(pb), capIdx != null ? spBefore(blocks[capIdx]) : spBefore(b)) < 200) add({ category: 'table', level: 'warning', blockIndex: capIdx != null ? capIdx : i, pageRel: [beforeIdx, capIdx != null ? capIdx : i], blankInsert: { at: capIdx != null ? capIdx : i, where: 'before' }, title: 'Нет пустой строки перед таблицей', detail: 'Перед таблицей нет пустой строки.', recommend: 'Отделяйте таблицу от текста интервалом в одну строку.', ref: 'СТУ 7.5–07–2021, п. 7.7.2' });
         const nx = blocks[i + 1];
-        if (nx && nx.kind === 'p' && !nx.isEmpty && spAfter(b) < 200) add({ category: 'table', level: 'warning', blockIndex: i, pageRel: [i, i + 1], title: 'Нет пустой строки после таблицы', detail: 'После таблицы сразу идёт текст.', recommend: 'Отделяйте таблицу от текста интервалом в одну строку.', ref: 'СТУ 7.5–07–2021, п. 7.7.2' });
+        if (nx && nx.kind === 'p' && !nx.isEmpty && spAfter(b) < 200) add({ category: 'table', level: 'warning', blockIndex: i, pageRel: [i, i + 1], blankInsert: { at: i + 1, where: 'before' }, title: 'Нет пустой строки после таблицы', detail: 'После таблицы сразу идёт текст.', recommend: 'Отделяйте таблицу от текста интервалом в одну строку.', ref: 'СТУ 7.5–07–2021, п. 7.7.2' });
       }
     }
   }

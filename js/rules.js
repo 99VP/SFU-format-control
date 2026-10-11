@@ -106,6 +106,13 @@
     const starts = [...forcedPageStarts].filter((i) => i > 0).sort((a, b) => a - b);
     let end = starts.length ? starts[0] : null;
     if (end == null) {
+      // разрыва нет: определяем титул по содержимому первых строк
+      const MARK = /СИБИРСКИЙ ФЕДЕРАЛЬНЫЙ|МИНИСТЕРСТВ|ФЕДЕРАЛЬНОЕ ГОСУДАРСТВЕННОЕ|ИНСТИТУТ|КАФЕДРА|УТВЕРЖДАЮ|КРАСНОЯРСК|РУКОВОДИТЕЛЬ|СТУДЕНТ|ПОДПИСЬ|ГРУПП|20\d\d/;
+      let last = -1;
+      for (let i = 0; i < Math.min(blocks.length, 40); i++) if (MARK.test((blocks[i].text || '').toUpperCase())) last = i;
+      if (last >= 0) end = last + 1;
+    }
+    if (end == null) {
       // разрыва нет: ищем первый структурный заголовок основной части
       for (let i = 0; i < blocks.length; i++) {
         const t = (blocks[i].text || '').slice(0, 80).trim().toUpperCase().replace(/[.:]+$/, '');
@@ -536,6 +543,7 @@
 
     // ======================================================= Нумерация страниц
     checkPageNumbers(doc, add);
+    checkHeaders(doc, add);
 
     // ============================================================ Перечисления
     for (let i = 0; i < blocks.length; i++) {
@@ -628,8 +636,11 @@
     // ======================================== Ссылки, источники, приложения
     checkTypography(blocks, roles, add);
     checkAiMarkers(blocks, roles, add);
+    checkConsistency(blocks, roles, add);
     checkReferencesAndSources(doc, blocks, roles, presentKeys, add);
     checkAbbreviations(blocks, roles, add);
+    checkAbbrevUsage(blocks, roles, add);
+    checkFormulas(blocks, roles, add);
     checkAppendices(blocks, roles, forcedPageStarts, add);
     const tocEntries = parseToc(blocks, roles, add);
 
@@ -1173,10 +1184,10 @@
       // длинное тире
       const emCount = (text.match(/\u2014/g) || []).length;
       if (emCount) add({
-        category: 'chars', level: 'info', ai: false, blockIndex: i,
+        category: 'ai', level: 'info', ai: true, blockIndex: i,
         title: 'Использовано длинное тире',
-        detail: `Длинное тире встречается в абзаце ${emCount} раз(а).`,
-        recommend: 'Между словами тире отделяют пробелами. В диапазонах чисел и в текстах сайта используйте короткое тире «–».',
+        detail: `Длинное тире встречается в абзаце ${emCount} раз(а). Обычно так не пишут вручную.`,
+        recommend: 'Используйте короткое тире «–»; в диапазонах чисел без пробелов.',
         ref: 'Правила русской типографики',
       });
       // длинное тире вплотную к словам (без пробелов)
@@ -1310,65 +1321,184 @@
   // Источники: Википедия «Признаки сгенерированности текста», gramota.ru,
   // разборы на Habr. Список устойчивых оборотов, markdown-остатков и меток.
   const AI_CLICHES = [
+    // обороты, которые чаще всего встречаются в сгенерированном тексте
     'играет важную роль', 'играет ключевую роль', 'играет значительную роль',
-    'выступает символом', 'является напоминанием', 'символизирует', 'неизгладимый след',
-    'ключевой момент', 'поворотный момент', 'имеет важное значение',
+    'важную роль в', 'ключевую роль в', 'значительную роль в',
     'важно отметить', 'необходимо отметить', 'стоит отметить', 'следует отметить',
-    'важно понимать', 'критично отметить', 'стоит учесть', 'стоит запомнить',
-    'значения могут варьироваться', 'может варьироваться',
-    'подводя итог', 'в заключение', 'в целом можно сказать', 'вкратце',
-    'сталкивается с рядом проблем', 'перспективы на будущее',
-    'расположенный в самом сердце', 'богатым культурным наследием', 'богатый культурным наследием',
-    'захватывающая природная красота', 'вековое наследие', 'достойный посещения',
+    'важно подчеркнуть', 'стоит подчеркнуть', 'следует подчеркнуть', 'необходимо подчеркнуть',
+    'важно понимать', 'стоит заметить', 'следует заметить', 'примечательно, что', 'интересно, что',
+    'критично отметить', 'стоит учесть', 'стоит учитывать', 'необходимо учитывать',
+    'подводя итог', 'в заключение', 'в целом можно сказать', 'таким образом',
+    'как итог', 'в конечном итоге', 'в конечном счёте',
+    'в современном мире', 'на сегодняшний день', 'в нынешних условиях', 'в эпоху цифровизации',
+    'в данной статье', 'в этой статье', 'в данной работе', 'в рамках данного', 'данный подход',
+    'широкий спектр', 'ключевой аспект', 'неотъемлемой частью', 'неотъемлемая часть',
+    'представляет собой важный', 'выводит на новый уровень', 'приобретает особую актуальность',
+    'имеет большое значение', 'имеет важное значение', 'является одним из',
+    'выступает символом', 'является напоминанием', 'символизирует', 'неизгладимый след',
+    'ключевой момент', 'поворотный момент', 'динамично развивающ', 'широкое распространение',
+    'комплексный подход', 'эффективное решение', 'оптимальное решение',
+    'расположенный в самом сердце', 'богатым культурным наследием', 'вековое наследие',
+    'сталкивается с рядом проблем', 'перспективы на будущее', 'могут варьироваться',
     'я надеюсь, это помогло', 'дайте мне знать', 'сообщите мне', 'вы абсолютно правы',
-    'более подробный анализ', 'в этой статье мы рассмотрим', 'в данной статье',
-    'в современном мире', 'в конечном итоге', 'следует подчеркнуть', 'стоит подчеркнуть',
-    'необходимо подчеркнуть', 'широкий спектр', 'ключевой аспект', 'в рамках данного',
-    'данный подход', 'представляет собой важный', 'выводит на новый уровень', 'неотъемлемой частью',
+    'в этой статье мы рассмотрим', 'более подробный анализ',
   ];
+  // «Вода»: слова и связки, которые часто заполняют текст без смысла.
+  const AI_FILLER = ['таким образом', 'в целом', 'кроме того', 'более того', 'в частности',
+    'в свою очередь', 'следует отметить', 'стоит отметить', 'важно отметить', 'необходимо',
+    'в рамках', 'является', 'позволяет', 'обеспечивает', 'данный', 'данная', 'данные', 'также', 'однако'];
+
+  // Диапазоны строки внутри прогонов (для точечной подсветки фразы).
+  function phraseRanges(block, phrase) {
+    const res = []; const needle = phrase.toLowerCase();
+    for (let ri = 0; ri < (block.runs || []).length; ri++) {
+      const run = block.runs[ri];
+      if (!(run.parts && run.parts.length === 1 && run.parts[0].type === 'text')) continue;
+      const t = (run.text || '').toLowerCase(); let idx = t.indexOf(needle);
+      while (idx >= 0) { res.push({ runIndex: ri, ranges: [[idx, idx + needle.length]] }); idx = t.indexOf(needle, idx + needle.length); }
+    }
+    return res;
+  }
 
   function checkAiMarkers(blocks, roles, add) {
     const ALLOW = new Set(['body', 'heading', 'structural', 'list', 'manualList', 'where', 'figureCaption', 'tableCaption']);
-    const MARKERS = [
-      ['важно отметить', 2], ['стоит отметить', 2], ['следует отметить', 2], ['необходимо отметить', 2],
-      ['играет важную роль', 2], ['играет ключевую роль', 2], ['ключевую роль', 1], ['широкий спектр', 2],
-      ['в современном мире', 2], ['в конечном итоге', 2], ['подводя итог', 2], ['в заключение', 1],
-      ['неотъемлемой частью', 2], ['представляет собой', 1], ['в данной статье', 2], ['в этой статье', 2],
-      ['ключевой аспект', 2], ['данный подход', 1], ['на основе анализа', 1], ['в рамках данного', 1],
-      ['таким образом', 1], ['в целом', 1], ['кроме того', 1], ['более того', 1], ['в частности', 1],
-      ['в свою очередь', 1], ['на сегодняшний день', 1], ['позволяет', 1], ['позволяют', 1],
-      ['обеспечивает', 1], ['обеспечивают', 1], ['является', 1], ['являются', 1],
-      ['данный', 1], ['данная', 1], ['данные', 1], ['комплексн', 1], ['эффективн', 1],
-    ];
+    const phraseCount = {};
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i]; if (b.kind !== 'p') continue;
       const t = b.text || ''; if (!t) continue;
       const low = normText(t).toLowerCase();
-      if (ALLOW.has(roles[i].role)) {
-        for (const ph of AI_CLICHES) {
-          if (low.indexOf(ph) >= 0) {
-            add({
-              category: 'ai', level: 'info', ai: true, blockIndex: i,
-              title: 'Оборот, частый у машинного текста',
-              detail: `Найден оборот «${ph}».`,
-              recommend: 'Перепишите своими словами или уберите.',
-              ref: 'Правила русской типографики',
-            });
-          }
-        }
-        // плотность шаблонных оборотов: два и более разных в одном абзаце
-        const found = [];
-        for (const m of MARKERS) { if (low.indexOf(m[0]) >= 0 && found.length < 8) found.push(m[0]); }
-        if (found.length >= 2) add({
-          category: 'ai', level: 'info', ai: true, blockIndex: i,
-          title: 'Возможно машинный текст',
-          detail: `В абзаце шаблонные обороты: ${found.join(', ')}.`,
-          recommend: 'Перепишите абзац своими словами, уберите клише.',
+      if (!ALLOW.has(roles[i].role)) continue;
+      // устойчивые обороты с подсветкой самой фразы
+      for (const ph of AI_CLICHES) {
+        let idx = low.indexOf(ph);
+        if (idx < 0) continue;
+        let c = 0; while (idx >= 0) { c++; idx = low.indexOf(ph, idx + ph.length); }
+        phraseCount[ph] = (phraseCount[ph] || 0) + c;
+        add({
+          category: 'ai', level: 'info', ai: true, blockIndex: i, chars: phraseRanges(b, ph),
+          title: 'Оборот, частый у машинного текста',
+          detail: `Найден оборот «${ph}»${c > 1 ? ' (повторов: ' + c + ')' : ''}.`,
+          recommend: 'Перепишите своими словами или уберите этот оборот.',
           ref: 'Правила русской типографики',
         });
-        let md = null;
-        if (/\*\*/.test(t)) md = '**'; else if (/^\s*#{1,6}\s/.test(b.text) || /(^|\s)##\s/.test(t)) md = '##'; else if (/```/.test(t)) md = '```';
-        if (md) add({ category: 'ai', level: 'warning', ai: true, blockIndex: i, title: 'Разметка Markdown в тексте', detail: `Найден символ разметки «${md}».`, recommend: 'Уберите символы Markdown.', ref: 'Правила русской типографики' });
+      }
+      // «не только ..., но и ...»
+      if (/не только/.test(low) && /но и/.test(low)) add({ category: 'ai', level: 'info', ai: true, blockIndex: i, chars: phraseRanges(b, 'не только').concat(phraseRanges(b, 'но и')), title: 'Оборот, частый у машинного текста', detail: 'Конструкция «не только ..., но и ...».', recommend: 'По возможности перепишите фразу проще.', ref: 'Правила русской типографики' });
+      // вода: много служебных связок в абзаце
+      if (normText(b.text).length > 260) {
+        const found = AI_FILLER.filter((w) => low.indexOf(w) >= 0);
+        if (found.length >= 4) add({ category: 'ai', level: 'info', ai: true, blockIndex: i, title: 'Много вводных слов (вода)', detail: `Служебные связки: ${found.slice(0, 6).join(', ')}.`, recommend: 'Сократите вводные слова, оставьте суть.', ref: 'Правила русской типографики' });
+      }
+      // markdown
+      let md = null;
+      if (/\*\*/.test(t)) md = '**'; else if (/^\s*#{1,6}\s/.test(b.text) || /(^|\s)##\s/.test(t)) md = '##'; else if (/```/.test(t)) md = '```';
+      if (md) add({ category: 'ai', level: 'warning', ai: true, blockIndex: i, title: 'Разметка Markdown в тексте', detail: `Найден символ разметки «${md}».`, recommend: 'Уберите символы Markdown.', ref: 'Правила русской типографики' });
+    }
+    // документ в целом: повторяющийся оборот это признак
+    const firstAt = {};
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i]; if (b.kind !== 'p' || !b.text) continue;
+      const low = b.text.toLowerCase();
+      for (const ph of AI_CLICHES) if (firstAt[ph] == null && low.indexOf(ph) >= 0) firstAt[ph] = i;
+    }
+    for (const ph in phraseCount) {
+      if (phraseCount[ph] >= 4) add({ category: 'ai', level: 'info', ai: true, blockIndex: firstAt[ph], title: 'Оборот часто повторяется', detail: `«${ph}» встречается в документе ${phraseCount[ph]} раз(а).`, recommend: 'Замените повторяющийся оборот синонимами или перепишите.', ref: 'Правила русской типографики' });
+    }
+  }
+
+  // Несоответствия оформления по всему документу.
+  function checkConsistency(blocks, roles, add) {
+    let hyphenRange = 0, endashRange = 0, emRange = 0;
+    let guillemet = 0, straight = 0, curly = 0;
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i]; if (b.kind !== 'p') continue;
+      if (roles[i].role === 'title') continue;
+      const t = b.text || '';
+      let m; const re = /(\d+(?:[.,]\d+)?)\s*([-–—])\s*(\d+(?:[.,]\d+)?)/g;
+      while ((m = re.exec(t))) { if (m[2] === '-') hyphenRange++; else if (m[2] === '–') endashRange++; else emRange++; }
+      guillemet += (t.match(/«/g) || []).length;
+      straight += (t.match(/"/g) || []).length;
+      curly += (t.match(/[“”]/g) || []).length;
+    }
+    if (hyphenRange > 0 && endashRange > 0) add({ category: 'chars', level: 'info', ai: false, blockIndex: null, title: 'Непоследовательные тире в диапазонах', detail: `Часть диапазонов через дефис (${hyphenRange}), часть через тире (${endashRange}).`, recommend: 'Приведите диапазоны к одному виду: тире без пробелов.', ref: 'Правила русской типографики' });
+    if ((straight > 0 || curly > 0) && guillemet > 0) add({ category: 'chars', level: 'info', ai: false, blockIndex: null, title: 'Разнобой в кавычках', detail: `Встречаются «ёлочки» (${guillemet}) и прямые или английские кавычки (${straight + curly}).`, recommend: 'Используйте единый вид кавычек, в русском тексте «ёлочки».', ref: 'Правила русской типографики' });
+  }
+
+  // Проверка сокращений: расшифровка при первом упоминании и наличие в списке.
+  function checkAbbrevUsage(blocks, roles, add) {
+    let start = -1, end = blocks.length;
+    for (let i = 0; i < blocks.length; i++) {
+      if (roles[i].role === 'structural' && roles[i].structKey === 'sokrashcheniya') { start = i; continue; }
+      if (start >= 0 && roles[i].role === 'structural') { end = i; break; }
+    }
+    const list = [];
+    if (start >= 0) for (let i = start + 1; i < end; i++) {
+      const b = blocks[i]; if (b.kind !== 'p') continue;
+      const m = normText(b.text).match(/^([^–—\-:]{1,24})\s*[–—\-:]\s*\S/);
+      if (m) list.push({ abbr: m[1].trim(), index: i });
+    }
+    if (!list.length) return;
+    const bodyIdx = [];
+    for (let i = 0; i < blocks.length; i++) {
+      if (blocks[i].kind !== 'p') continue;
+      if (roles[i].role === 'title' || roles[i].role === 'toc') continue;
+      if (start >= 0 && i > start && i < end) continue;
+      bodyIdx.push(i);
+    }
+    const textOf = (i) => normText(blocks[i].text);
+    for (const a of list) {
+      let first = -1, pos = -1;
+      for (const i of bodyIdx) { const p = textOf(i).indexOf(a.abbr); if (p >= 0) { first = i; pos = p; break; } }
+      if (first < 0) { add({ category: 'abbrev', level: 'info', blockIndex: a.index, title: 'Сокращение не используется в тексте', detail: `«${a.abbr}» есть в списке сокращений, но не встречается в тексте.`, recommend: 'Уберите лишнее сокращение из списка.', ref: 'СТУ 7.5–07–2021, п. 6.8' }); continue; }
+      const t = textOf(first); const before = t.slice(Math.max(0, pos - 90), pos);
+      const expanded = /\([^)]{5,80}\)\s*$/.test(before);
+      if (!expanded) add({ category: 'abbrev', level: 'warning', blockIndex: first, title: 'Сокращение не расшифровано при первом упоминании', detail: `«${a.abbr}» впервые встречается без расшифровки.`, recommend: 'При первом упоминании приводите расшифровку: полное название (АБВ).', ref: 'СТУ 7.5–07–2021, п. 7.3.3' });
+    }
+    const known = new Set(list.map((x) => x.abbr));
+    const common = new Set(['ГОСТ', 'РФ', 'СФУ', 'ИИ', 'ВКР', 'МД', 'ДР', 'БР', 'КР', 'КП', 'ПЭВМ', 'РГЗ', 'РГР', 'ООО', 'АО', 'ПАО', 'БПЛА', 'API', 'URL', 'HTTP', 'HTTPS', 'IT', 'AI', 'ML', 'VR', 'AR', 'ТАСС', 'РИА', 'ИТ']);
+    const re = /(^|[^А-ЯЁA-Z])([А-ЯЁA-Z]{2,6})(?![А-ЯЁA-Z])/g;
+    const seen = new Map();
+    for (const i of bodyIdx) {
+      const t = textOf(i); let m;
+      re.lastIndex = 0;
+      while ((m = re.exec(t))) { const w = m[2]; if (known.has(w) || common.has(w)) continue; if (!seen.has(w)) seen.set(w, i); }
+    }
+    let n = 0;
+    for (const [w, i] of seen) { if (n >= 5) break; add({ category: 'abbrev', level: 'info', blockIndex: i, title: 'Сокращение не внесено в список', detail: `«${w}» встречается в тексте, но отсутствует в списке сокращений.`, recommend: 'Внесите сокращение в СПИСОК СОКРАЩЕНИЙ или расшифруйте при первом упоминании.', ref: 'СТУ 7.5–07–2021, п. 6.8' }); n++; }
+  }
+
+  // Нумерация формул и ссылки на них.
+  function checkFormulas(blocks, roles, add) {
+    const nums = [];
+    for (let i = 0; i < blocks.length; i++) {
+      if (blocks[i].kind !== 'p' || roles[i].role !== 'formula') continue;
+      const m = normText(blocks[i].text).match(/\((\d+(?:\.\d+)*)\)\s*$/);
+      if (m) nums.push({ index: i, num: m[1] });
+    }
+    const counters = {}; let broken = false;
+    for (const f of nums) {
+      const parts = f.num.split('.').map(Number);
+      const parent = parts.slice(0, -1).join('.');
+      const expected = (counters[parent] || 0) + 1;
+      if (parts[parts.length - 1] !== expected) broken = true;
+      counters[parent] = parts[parts.length - 1];
+    }
+    if (broken) add({ category: 'formula', level: 'warning', blockIndex: nums[0] ? nums[0].index : null, title: 'Нарушена нумерация формул', detail: `Номера формул идут не по порядку: ${nums.map((f) => f.num).join(', ')}.`, recommend: 'Нумеруйте формулы последовательно арабскими цифрами.', ref: 'СТУ 7.5–07–2021, п. 7.6.2' });
+    const allText = collectText(blocks);
+    for (const f of nums) {
+      const re = new RegExp('формул\\w*\\D{0,12}\\(?' + f.num.replace('.', '\\.') + '\\)?', 'i');
+      if (!re.test(allText)) add({ category: 'formula', level: 'info', blockIndex: f.index, title: 'Нет ссылки на формулу', detail: `В тексте нет ссылки на формулу (${f.num}).`, recommend: 'Ссылайтесь на формулу: «по формуле (' + f.num + ')».', ref: 'СТУ 7.5–07–2021, п. 7.6.8' });
+    }
+  }
+
+  // Верхний колонтитул.
+  function checkHeaders(doc, add) {
+    for (const s of doc.sections) {
+      const h = s.headers || {};
+      for (const k in h) {
+        const hf = h[k]; if (!hf) continue;
+        if (hf.hasPageField) add({ category: 'pagenum', level: 'warning', blockIndex: null, pageLevel: true, title: 'Номер страницы в верхнем колонтитуле', detail: 'Номер страницы расположен в верхнем колонтитуле.', recommend: 'Номер страницы ставят внизу по центру.', ref: 'СТУ 7.5–07–2021, п. 7.2.1' });
+        else if ((hf.text || '').trim()) add({ category: 'page', level: 'info', blockIndex: null, pageLevel: true, title: 'Верхний колонтитул содержит текст', detail: `«${(hf.text || '').trim().slice(0, 60)}».`, recommend: 'Стандарт не предусматривает текст в верхнем колонтитуле.', ref: 'СТУ 7.5–07–2021, п. 7.2' });
       }
     }
   }

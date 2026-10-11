@@ -123,6 +123,7 @@
     $('#topfile').textContent = '';
     $('#fix-btn').style.display = 'none';
     const bb = $('#back-btn'); if (bb) bb.style.display = 'none';
+    const rb = $('#report-btn'); if (rb) rb.style.display = 'none';
     renderHistory();
   }
   function showProcessing(name) {
@@ -138,6 +139,7 @@
     $('#workspace').classList.add('on');
     $('#fix-btn').style.display = '';
     const bb = $('#back-btn'); if (bb) bb.style.display = '';
+    const rb = $('#report-btn'); if (rb) rb.style.display = '';
   }
 
   const STEPS = ['Чтение файла', 'Разбор структуры документа', 'Проверка по СТУ 7.5–07–2021', 'Построение развёртки', 'Готово'];
@@ -379,6 +381,35 @@
     }
   }
 
+  // --------------- отчёт о замечаниях (txt)
+  function buildReport() {
+    if (!state.doc) return;
+    const L = { error: 'ОШИБКА', warning: 'ПРЕДУПРЕЖДЕНИЕ', info: 'ИНФО' };
+    const c = { error: 0, warning: 0, info: 0 };
+    for (const f of state.findings) c[f.level] = (c[f.level] || 0) + 1;
+    const req = STURules.DOC_REQUIREMENTS[state.docType];
+    const lines = [];
+    lines.push('СТУ-Нормоконтроль: отчёт о проверке');
+    lines.push('Файл: ' + state.fileName);
+    lines.push('Вид документа: ' + ((req && req.label) || state.docType));
+    lines.push('Дата: ' + new Date().toLocaleString('ru-RU'));
+    lines.push('Замечаний: ошибок ' + c.error + ', предупреждений ' + c.warning + ', инфо ' + c.info);
+    lines.push('');
+    state.findings.forEach((f, i) => {
+      lines.push((i + 1) + '. [' + L[f.level] + (f.ai ? ' / ИИ' : '') + '] ' + (f.page != null ? ('лист ' + (f.page + 1)) : 'общее') + ': ' + f.title);
+      lines.push('   ' + f.detail);
+      if (f.recommend) lines.push('   Как исправить: ' + f.recommend);
+      if (f.ref) lines.push('   ' + f.ref);
+      lines.push('');
+    });
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = state.fileName.replace(/\.docx$/i, '') + ' (отчёт).txt';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+
   // ------------------------------------------------------------------ utils
   function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
@@ -466,6 +497,7 @@
     $('#fix-cancel').addEventListener('click', () => { $('#fix-dialog').style.display = 'none'; });
     $('#fix-ok').addEventListener('click', exportFixed);
     $('#fix-dialog').addEventListener('click', (e) => { if (e.target === $('#fix-dialog')) $('#fix-dialog').style.display = 'none'; });
+    const rbtn = $('#report-btn'); if (rbtn) rbtn.addEventListener('click', buildReport);
 
     // история проверок: очистка
     const hclear = $('#history-clear');

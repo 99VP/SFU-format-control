@@ -339,9 +339,10 @@
           ref: 'СТУ 7.5–07–2021, п. 7.1.1',
         });
       }
-      // абзацный отступ 12,5 мм
+      // абзацный отступ 12,5 мм (учитываем и отступ всего абзаца слева)
+      const leftInd = b.ind ? (b.ind.left || 0) : 0;
       if (effectiveFirst == null || effectiveFirst === 0) {
-        add({
+        if (leftInd < 300) add({
           category: 'font', level: 'error', blockIndex: i,
           title: 'Нет абзацного отступа',
           detail: 'Абзац без отступа первой строки, требуется 12,5 мм (5 знаков).',
@@ -1784,7 +1785,8 @@
       if (b.numPr && b.numPr.numId) { n++; num = n; }
       else if (m) { num = +m[1]; if (num !== n + 1 && seqEntry == null) seqEntry = i; n = num; }
       const fl = b.ind ? b.ind.firstLine : (b.numPr ? 708 : null);
-      if (!fl && !b.numPr && indentEntry == null) indentEntry = i;
+      const leftI = b.ind ? (b.ind.left || 0) : 0;
+      if (!fl && !leftI && !b.numPr && indentEntry == null) indentEntry = i;
       const urls = t.match(new RegExp(URL_RE.source, 'gi')) || [];
       entries.push({ index: i, num: num, text: t, urls: urls });
     }

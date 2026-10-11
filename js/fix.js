@@ -44,15 +44,26 @@
 
   function roleOptions(role, o) {
     const a = Object.assign({}, o);
+    a.clean = (role === 'body' || role === 'where' || role === 'list' || role === 'manualList');
     if (role === 'heading' || role === 'structural' || role === 'tableCaption' || role === 'figureCaption') { a.align = false; a.indent = false; a.spacing = false; a.size = o.size; }
     else if (role === 'list' || role === 'manualList') { a.align = false; a.indent = false; }
     else if (role === 'toc' || role === 'title' || role === 'image' || role === 'table' || role === 'empty') a.size = o.size && role !== 'toc' && role !== 'title';
     return a;
   }
 
+  // Убирает подчёркивание и приводит цвет текста к чёрному (СТУ, п. 7.1.1).
+  function clearEmphasis(p) {
+    for (const run of p.getElementsByTagName('w:r')) {
+      const rPr = child(run, 'rPr'); if (!rPr) continue;
+      const u = child(rPr, 'u'); if (u) rPr.removeChild(u);
+      const col = child(rPr, 'color'); if (col) setW(col, 'val', '000000');
+    }
+  }
+
   function fixParagraph(p, role, o) {
     const a = roleOptions(role, o);
     for (const r of p.getElementsByTagName('w:r')) fixRun(r, a);
+    if (o.emph && a.clean) clearEmphasis(p);
     const pPr = ensure(p, 'pPr', null, true);
     if (a.align) setW(ensure(pPr, 'jc', PPR_ORDER), 'val', 'both');
     if (a.indent) {
@@ -123,6 +134,18 @@
     }
   }
 
+  // Отсылка к источнику: переносим точку до квадратных скобок («текст.[7]»).
+  function fixCitations(dom) {
+    const ts = dom.getElementsByTagName('w:t');
+    const re = /[ \t]*\[(\d{1,4}(?:\s*[;,][^\]]*)?)\][ \t]*\./g;
+    for (const t of ts) {
+      const before = t.textContent;
+      if (!/\[\d/.test(before)) continue;
+      const after = before.replace(re, '.[$1]');
+      if (after !== before) t.textContent = after;
+    }
+  }
+
   // Обновление номера страницы в строке содержания (последний числовой прогон после вкладки).
   function fixTocPage(p, newPage) {
     const runs = p.getElementsByTagName('w:r');
@@ -176,6 +199,8 @@
     chk('dash');
     if (opts.text) fixSpaces(dom);
     chk('text');
+    if (opts.text) fixCitations(dom);
+    chk('cite');
     const out = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + new XMLSerializer().serializeToString(dom.documentElement);
     chk('serialize');
     files['word/document.xml'] = enc.encode(out);

@@ -120,13 +120,14 @@
     // Титульный лист это одна страница: ориентируемся на первый разрыв страницы.
     const starts = [...forcedPageStarts].filter((i) => i > 0).sort((a, b) => a - b);
     let end = starts.length ? starts[0] : null;
-    // Первый структурный заголовок основной части всегда означает конец титула.
+    // Первый структурный заголовок основной части означает конец титула,
+    // но только если он не на самом титульном листе (там бывают строки «РЕФЕРАТ» и т.п.).
     let structStart = null;
     for (let i = 0; i < blocks.length; i++) {
       const t = (blocks[i].text || '').slice(0, 80).trim().toUpperCase().replace(/[.:]+$/, '');
       if (/^(РЕФЕРАТ|АННОТАЦИЯ|СОДЕРЖАНИЕ|ВВЕДЕНИЕ)$/.test(t)) { structStart = i; break; }
     }
-    if (structStart != null) end = (end == null ? structStart : Math.min(end, structStart));
+    if (structStart != null && structStart >= 8) end = (end == null ? structStart : Math.min(end, structStart));
     if (end == null) {
       // разрыва нет: определяем титул по содержимому первых строк
       const MARK = /СИБИРСКИЙ ФЕДЕРАЛЬНЫЙ|МИНИСТЕРСТВ|ФЕДЕРАЛЬНОЕ ГОСУДАРСТВЕННОЕ|ИНСТИТУТ|КАФЕДРА|УТВЕРЖДАЮ|КРАСНОЯРСК|РУКОВОДИТЕЛЬ|СТУДЕНТ|ПОДПИСЬ|ГРУПП|20\d\d/;
@@ -565,6 +566,7 @@
     checkHeadingStructure(blocks, roles, add);
     checkHeadingSpacing(blocks, roles, add);
     checkPunctuation(blocks, roles, add);
+    checkCitations(blocks, roles, add);
     checkNumberingSequence(roles, blocks, add);
 
     // Структурные заголовки печатают прописными буквами (СТУ, п. 6.1).
@@ -822,6 +824,32 @@
   }
 
   // Пунктуация: точка в конце абзаца и двоеточие перед перечислением.
+  // Отсылка к источнику: точка должна стоять до квадратных скобок («текст.[7]»).
+  function checkCitations(blocks, roles, add) {
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i]; if (b.kind !== 'p') continue;
+      const r = roles[i]; if (!r) continue;
+      if (r.role === 'title' || r.role === 'toc') continue;
+      const text = b.text || '';
+      const urls = urlSpans(text);
+      const re = /\[(\d{1,4}(?:\s*[;,][^\]]*)?)\]\s*\./g;
+      let m; const ranges = [];
+      while ((m = re.exec(text))) {
+        if (inSpans(m.index, urls)) continue;
+        ranges.push([m.index, m.index + m[0].length]);
+      }
+      if (!ranges.length) continue;
+      let chars = []; for (const [s, e] of ranges) chars = chars.concat(rangeAt(b, s, e));
+      add({
+        category: 'sources', level: 'warning', blockIndex: i, chars,
+        title: 'Точка после отсылки к источнику',
+        detail: 'В отсылке к источнику точка стоит после квадратных скобок.',
+        recommend: 'Ставьте точку до квадратных скобок, без пробела: «текст.[7]».',
+        ref: 'СТУ 7.5–07–2021, п. 7.9.4',
+      });
+    }
+  }
+
   function checkPunctuation(blocks, roles, add) {
     const CITES = /\s*(?:\[\s*\d+(?:\s*[;,\u2013-]\s*\d+)*\s*\])+\s*$/;
     for (let i = 0; i < blocks.length; i++) {

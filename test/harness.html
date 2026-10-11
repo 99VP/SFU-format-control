@@ -62,7 +62,7 @@ try {
           tocPages[e.index] = p + 1;
         }
       }
-      const bytes = STUFix.buildFixed(u8.buffer, meta, { font: true, align: true, indent: true, spacing: true, page: true, dash: true, text: true, toc: true, tocPages: tocPages, titleEnd: res.titleEnd });
+      const bytes = STUFix.buildFixed(u8.buffer, meta, { font: true, align: true, indent: true, spacing: true, page: true, dash: true, text: true, emph: true, toc: true, tocPages: tocPages, titleEnd: res.titleEnd });
       log('исправлено байт: ' + bytes.length);
       const doc2 = STUDocx.parse(bytes.buffer);
       const res2 = STURules.runChecks(doc2, type);
@@ -188,7 +188,7 @@ try {
       window.STUFIX_CHECK = function (s) { var t = new URLSearchParams(location.search).get('chk'); if (t && s === t) throw new Error('reached ' + s); };
       const meta = doc.blocks.map((b, i2) => ({ kind: b.kind, role: res.roles[i2] ? res.roles[i2].role : 'body' }));
       const t0 = performance.now();
-      const bytes = STUFix.buildFixed(u8.buffer, meta, { font: true, align: true, indent: true, spacing: true, page: true, dash: true, text: true });
+      const bytes = STUFix.buildFixed(u8.buffer, meta, { font: true, align: true, indent: true, spacing: true, page: true, dash: true, text: true, emph: true });
       log('--- исправление --- собрано байт: ' + bytes.length + ' за ' + (performance.now() - t0).toFixed(0) + ' мс');
       if (new URLSearchParams(location.search).get('fixstep') !== 'build') {
         const doc2 = STUDocx.parse(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));

@@ -401,6 +401,7 @@
       font: $('#opt-font').checked, align: $('#opt-align').checked, indent: $('#opt-indent').checked,
       spacing: $('#opt-spacing').checked, page: $('#opt-page').checked, dash: $('#opt-dash').checked,
       text: $('#opt-text') ? $('#opt-text').checked : false,
+      emph: $('#opt-emph') ? $('#opt-emph').checked : false,
       titleEnd: state.titleEnd || 0,
     };
     // Новые номера страниц для содержания (по построенной развёртке)

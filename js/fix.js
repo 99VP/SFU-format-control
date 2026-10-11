@@ -80,10 +80,41 @@
     for (const t of titleT) { const len = t.textContent.length; t.textContent = s.slice(pos, pos + len); pos += len; }
   }
 
+  // Позиция перечисления: первую букву делаем строчной (аббревиатуры не трогаем).
+  function fixListCase(p, role) {
+    const ts = [];
+    (function walk(n) {
+      for (const c of n.childNodes) {
+        if (c.nodeType !== 1) continue;
+        if (c.localName === 't') ts.push(c);
+        else if (c.localName !== 'rPr') walk(c);
+      }
+    })(p);
+    let started = (role !== 'manualList');
+    for (const t of ts) {
+      const s = t.textContent;
+      for (let i = 0; i < s.length; i++) {
+        const ch = s[i];
+        if (!started) { if (/\s/.test(ch)) started = true; continue; }
+        if (ch === '«' || ch === '„' || ch === '"' || ch === '\u201c' || ch === '(') continue;
+        if (/[а-яё]/.test(ch)) break;        // уже строчная
+        if (/[A-Za-z]/.test(ch)) break;      // латиница – не трогаем
+        if (/[А-ЯЁ]/.test(ch)) {
+          const rest = s.slice(i + 1);
+          const word = (ch + (rest.match(/^[А-ЯЁа-яёA-Za-z\-]*/) || [''])[0]);
+          if (/[А-ЯЁ]{2}/.test(word)) break; // похоже на аббревиатуру
+          t.textContent = s.slice(0, i) + ch.toLowerCase() + s.slice(i + 1);
+          return;
+        }
+      }
+    }
+  }
+
   function fixParagraph(p, role, o) {
     const a = roleOptions(role, o);
     for (const r of p.getElementsByTagName('w:r')) fixRun(r, a);
     if (o.emph && a.clean) clearEmphasis(p);
+    if (o.emph && (role === 'list' || role === 'manualList')) fixListCase(p, role);
     if (o.toc && role === 'toc') fixTocCase(p);
     const pPr = ensure(p, 'pPr', null, true);
     if (a.align) setW(ensure(pPr, 'jc', PPR_ORDER), 'val', 'both');

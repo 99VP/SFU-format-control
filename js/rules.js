@@ -1790,6 +1790,10 @@
     }
     if (seqEntry != null) add({ category: 'sources', level: 'warning', blockIndex: seqEntry, title: 'Нарушена нумерация записей', detail: 'Нумерация библиографических записей не сквозная или нарушена.', recommend: 'Пронумеруйте записи арабскими цифрами сквозной нумерацией.', ref: 'СТУ 7.5–07–2021, п. 7.10.2' });
     if (indentEntry != null) add({ category: 'sources', level: 'info', blockIndex: indentEntry, title: 'Запись без абзацного отступа', detail: 'Библиографическая запись напечатана без абзацного отступа.', recommend: 'Печатайте библиографические записи с абзацного отступа.', ref: 'СТУ 7.5–07–2021, п. 7.10.2' });
+    // В конце библиографической записи ставят точку.
+    for (const e of entries) {
+      if (e.text && !/\.$/.test(e.text)) add({ category: 'sources', level: 'warning', blockIndex: e.index, title: 'Нет точки в конце записи источника', detail: `Запись «${e.text.slice(0, 60)}${e.text.length > 60 ? '…' : ''}» не заканчивается точкой.`, recommend: 'Заканчивайте библиографическую запись точкой.', ref: 'СТУ 7.5–07–2021, п. 7.10.2' });
+    }
     checkBibliographyFormat(entries, start, add);
 
     // Ссылки внутри записей: метка чат-бота и дата обращения – с подсветкой URL.

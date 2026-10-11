@@ -233,7 +233,8 @@
     segs.push(seg);
 
     const ind = p.ind || {};
-    const centered = (p.jc === 'center' || p.jc === 'right' || p.jc === 'end');
+    const hasTabsP = (p.tabs && p.tabs.length) || /\t/.test(p.text || '');
+    const centered = hasTabsP && (p.jc === 'center' || p.jc === 'right' || p.jc === 'end');
     const startOffset = centered ? 0 : TW((ind.left || 0) + Math.max(0, ind.firstLine || 0));
     const textW = Math.max(0, (ctx.textWidthPx || 0) - startOffset);
     const tabs = (p.tabs || []).map((t) => ({ pos: TW(t.pos), val: t.val, leader: t.leader })).sort((a, b) => a.pos - b.pos);
@@ -254,7 +255,7 @@
     }
     const total = x;
     let offset = 0;
-    if (!marker) {
+    if (!marker && hasTabsP) {
       if (p.jc === 'center') offset = Math.max(0, (textW - total) / 2);
       else if (p.jc === 'right' || p.jc === 'end') offset = Math.max(0, textW - total);
     }
@@ -354,7 +355,9 @@
     styleParagraphText(el, p);
     const role = ctx.roles && ctx.roles[blockIndex] ? ctx.roles[blockIndex].role : null;
     const hasTabs = (p.tabs && p.tabs.length) || /\t/.test(p.text || '');
-    if (hasTabs && role !== 'toc') el.style.textAlign = 'left';   // позиции считаем сами, без двойного центрирования
+    // Центрирование/право без табуляторов отдаём браузеру (как Word), поэтому
+    // text-align трогаем только при табуляторах, где позиции считаем сами.
+    if (hasTabs && role !== 'toc') el.style.textAlign = 'left';
     if (role === 'image') { el.style.fontSize = '0'; el.style.lineHeight = 'normal'; }  // убираем лишний интервал вокруг картинки
     if (role === 'toc' && /\t/.test(p.text || '')) renderTocParagraph(el, p, blockIndex, ctx);
     else renderRuns(el, p, blockIndex, ctx);

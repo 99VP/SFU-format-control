@@ -292,11 +292,18 @@
 
   function parseParagraph(p, ctx) {
     const pPr = parsePPr(kid(p, 'pPr'));
-    const rawRuns = kids(p, 'r').map(parseRun);
-    const hyperRuns = [];
-    // Гиперссылки содержат вложенные w:r
-    for (const h of kids(p, 'hyperlink')) for (const r of kids(h, 'r')) hyperRuns.push(parseRun(r));
-    const allRaw = rawRuns.concat(hyperRuns);
+    // Прогоны нужно брать строго в порядке документа, в том числе внутри
+    // гиперссылок и полей (w:hyperlink, w:sdt, w:fldSimple). Иначе, например,
+    // номер страницы в содержании «перескакивает» вперёд текста.
+    const allRaw = [];
+    (function collect(node) {
+      for (const c of Array.from(node.childNodes)) {
+        if (c.nodeType !== 1) continue;
+        if (c.localName === 'r') allRaw.push(parseRun(c));
+        else if (c.localName === 'pPr') continue;
+        else collect(c);
+      }
+    })(p);
     const styleId = pPr.styleId || ctx.defaultParaStyle || null;
     const stRPr = styleRPr(styleId, ctx.styles, ctx.styleRPrCache);
     const stPPr = stylePPr(styleId, ctx.styles, ctx.stylePPrCache);

@@ -92,10 +92,17 @@ try {
       let n = 0;
       div.querySelectorAll('.stu-p').forEach(function (p) {
         if (n >= 10) return;
-        if (getComputedStyle(p).textAlign !== 'center') return;
-        const r = document.createRange(); r.selectNodeContents(p);
-        const rect = r.getBoundingClientRect();
-        log('центр: сдвиг=' + Math.round(rect.left + rect.width / 2 - flowCenter) + ' текст=' + JSON.stringify((p.textContent || '').slice(0, 25)));
+        if (getComputedStyle(p).textAlign !== 'left') return;
+        let minL = Infinity, maxR = -Infinity;
+        p.querySelectorAll('span').forEach(function (s) {
+          if (s.classList.contains('stu-tab')) return;
+          if (!s.textContent || !(s.textContent).trim()) return;
+          const r = s.getBoundingClientRect(); if (!r.width) return;
+          if (r.left < minL) minL = r.left; if (r.right > maxR) maxR = r.right;
+        });
+        if (minL === Infinity) return;
+        const c = (minL + maxR) / 2;
+        log('центр: сдвиг=' + Math.round(c - flowCenter) + ' текст=' + JSON.stringify((p.textContent || '').slice(0, 25)));
         n++;
       });
     }

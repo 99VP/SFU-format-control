@@ -242,7 +242,7 @@
 
   // Построить развёртку, досчитать проверки содержания по страницам, собрать панели.
   function finishRender(doc, res, name, buf) {
-    state.roles = res.roles; state.titleEnd = res.titleEnd;
+    state.roles = res.roles; state.titleEnd = res.titleEnd; state.tocEntries = res.tocEntries || [];
     let findings = res.findings.slice();
     let rnd = STURender.renderDocument(doc, res.roles, findings, $('#viewer'));
     if (STURules.crossCheckToc && res.tocEntries && res.tocEntries.length) {
@@ -312,17 +312,27 @@
     const v = $('#viewer');
     if (!v || v.__clickBound) return; v.__clickBound = true;
     v.addEventListener('click', (e) => {
-      const el = e.target.closest('[data-block]');
-      if (!el) return;
-      const bi = +el.getAttribute('data-block');
-      const f = state.findings.find((x) => x.blockIndex === bi);
-      if (!f) return;
-      const item = state.findEls && state.findEls.get(f.id);
-      if (item) {
-        item.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        item.classList.remove('stu-flash'); void item.offsetWidth; item.classList.add('stu-flash');
+      // сначала конкретный абзац, потом замечание уровня листа
+      let el = e.target.closest('[data-block]');
+      if (el) {
+        const bi = +el.getAttribute('data-block');
+        const f = state.findings.find((x) => x.blockIndex === bi);
+        if (f) { flashFinding(f); return; }
+      }
+      const pg = e.target.closest('[data-find-id]');
+      if (pg) {
+        const f = state.findings.find((x) => x.id === pg.getAttribute('data-find-id'));
+        if (f) flashFinding(f);
       }
     });
+  }
+
+  function flashFinding(f) {
+    const item = state.findEls && state.findEls.get(f.id);
+    if (item) {
+      item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      item.classList.remove('stu-flash'); void item.offsetWidth; item.classList.add('stu-flash');
+    }
   }
 
   function focusFinding(f) {
@@ -390,8 +400,33 @@
     const opts = {
       font: $('#opt-font').checked, align: $('#opt-align').checked, indent: $('#opt-indent').checked,
       spacing: $('#opt-spacing').checked, page: $('#opt-page').checked, dash: $('#opt-dash').checked,
+      text: $('#opt-text') ? $('#opt-text').checked : false,
       titleEnd: state.titleEnd || 0,
     };
+    // Новые номера страниц для содержания (по построенной развёртке)
+    const tocEl = $('#opt-toc');
+    opts.toc = tocEl ? tocEl.checked : false;
+    if (opts.toc && state.tocEntries && state.tocEntries.length && state.render) {
+      const roles = state.roles, blocks = state.doc.blocks;
+      const norm = (s) => (s || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+      const byNum = {}, byTitle = {};
+      for (let i = 0; i < blocks.length; i++) {
+        const r = roles[i]; if (!r) continue;
+        if (r.role === 'heading' && r.number) { if (byNum[r.number] == null) byNum[r.number] = i; }
+        if (r.role === 'structural') byTitle[norm(blocks[i].text)] = i;
+      }
+      const map = {};
+      for (const e of state.tocEntries) {
+        let bi = null;
+        if (e.number != null && byNum[e.number] != null) bi = byNum[e.number];
+        else if (e.title && byTitle[norm(e.title)] != null) bi = byTitle[norm(e.title)];
+        if (bi == null) continue;
+        const p = state.render.pageForBlock[bi];
+        if (p == null) continue;
+        map[e.index] = p + 1;
+      }
+      opts.tocPages = map;
+    }
     try {
       const meta = state.doc.blocks.map((b, i) => ({ kind: b.kind, role: state.roles[i] ? state.roles[i].role : 'body' }));
       const bytes = STUFix.buildFixed(state.buffer, meta, opts);

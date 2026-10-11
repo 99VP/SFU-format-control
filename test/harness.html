@@ -39,6 +39,41 @@ try {
   log('--- замечания (уровень, блок, лист, текст, рекомендация) ---');
   const catFilter = new URLSearchParams(location.search).get('cat');
   (catFilter ? res.findings.filter((f) => f.category === catFilter) : res.findings).slice(0, 30).forEach(f => log('[' + f.level + '] b' + f.blockIndex + ' p' + (f.page == null ? '-' : f.page + 1) + ' | ' + f.title + ': ' + f.detail + ' → ' + (f.recommend || '') + ' | ' + f.ref));
+  const fixMode = new URLSearchParams(location.search).get('fixchk');
+  if (fixMode) {
+    try {
+      const meta = doc.blocks.map(function (b, i) { return { kind: b.kind, role: res.roles[i] ? res.roles[i].role : 'body' }; });
+      let tocPages = null;
+      if (res.tocEntries && res.tocEntries.length) {
+        const norm = (s) => (s || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+        const byNum = {}, byTitle = {};
+        for (let i = 0; i < doc.blocks.length; i++) {
+          const r = res.roles[i]; if (!r) continue;
+          if (r.role === 'heading' && r.number) { if (byNum[r.number] == null) byNum[r.number] = i; }
+          if (r.role === 'structural') byTitle[norm(doc.blocks[i].text)] = i;
+        }
+        tocPages = {};
+        for (const e of res.tocEntries) {
+          let bi = null;
+          if (e.number != null && byNum[e.number] != null) bi = byNum[e.number];
+          else if (e.title && byTitle[norm(e.title)] != null) bi = byTitle[norm(e.title)];
+          if (bi == null) continue;
+          const p = rnd.pageForBlock[bi]; if (p == null) continue;
+          tocPages[e.index] = p + 1;
+        }
+      }
+      const bytes = STUFix.buildFixed(u8.buffer, meta, { font: true, align: true, indent: true, spacing: true, page: true, dash: true, text: true, toc: true, tocPages: tocPages, titleEnd: res.titleEnd });
+      log('исправлено байт: ' + bytes.length);
+      const doc2 = STUDocx.parse(bytes.buffer);
+      const res2 = STURules.runChecks(doc2, type);
+      const c2 = {}; res2.findings.forEach((f) => c2[f.level] = (c2[f.level] || 0) + 1);
+      log('ПОСЛЕ правки: блоков ' + doc2.blocks.length + ', замечаний ' + JSON.stringify(c2) + ', всего ' + res2.findings.length);
+      const keys = new Set(res2.findings.map((f) => f.title + '|' + (f.blockIndex == null ? '' : f.blockIndex)));
+      const gone = res.findings.filter((f) => !keys.has(f.title + '|' + (f.blockIndex == null ? '' : f.blockIndex)));
+      log('исчезло замечаний: ' + gone.length);
+      gone.slice(0, 8).forEach((f) => log('   было: ' + f.title + (f.blockIndex == null ? '' : ' (b' + f.blockIndex + ')')));
+    } catch (e) { log('FIX ERROR: ' + (e && e.message) + '\n' + (e && e.stack || '')); }
+  }
   const dump = new URLSearchParams(location.search).get('dump');
   if (dump) {
     const [a, b] = dump.split(',').map(Number);
@@ -153,7 +188,7 @@ try {
       window.STUFIX_CHECK = function (s) { var t = new URLSearchParams(location.search).get('chk'); if (t && s === t) throw new Error('reached ' + s); };
       const meta = doc.blocks.map((b, i2) => ({ kind: b.kind, role: res.roles[i2] ? res.roles[i2].role : 'body' }));
       const t0 = performance.now();
-      const bytes = STUFix.buildFixed(u8.buffer, meta, { font: true, align: true, indent: true, spacing: true, page: true, dash: true });
+      const bytes = STUFix.buildFixed(u8.buffer, meta, { font: true, align: true, indent: true, spacing: true, page: true, dash: true, text: true });
       log('--- исправление --- собрано байт: ' + bytes.length + ' за ' + (performance.now() - t0).toFixed(0) + ' мс');
       if (new URLSearchParams(location.search).get('fixstep') !== 'build') {
         const doc2 = STUDocx.parse(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));

@@ -22,7 +22,7 @@
     { key: 'vvedenie', names: ['ВВЕДЕНИЕ'], label: 'Введение' },
     { key: 'zaklyuchenie', names: ['ЗАКЛЮЧЕНИЕ'], label: 'Заключение' },
     { key: 'sokrashcheniya', names: ['СПИСОК СОКРАЩЕНИЙ', 'ПЕРЕЧЕНЬ СОКРАЩЕНИЙ', 'СПИСОК УСЛОВНЫХ ОБОЗНАЧЕНИЙ'], label: 'Список сокращений' },
-    { key: 'istochniki', names: ['СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ', 'СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ И ЛИТЕРАТУРЫ', 'СПИСОК ЛИТЕРАТУРЫ', 'БИБЛИОГРАФИЧЕСКИЙ СПИСОК'], label: 'Список использованных источников' },
+    { key: 'istochniki', names: ['СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ', 'СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ И ЛИТЕРАТУРЫ', 'СПИСОК ИСПОЛЬЗОВАННОЙ ЛИТЕРАТУРЫ', 'СПИСОК ЛИТЕРАТУРЫ', 'БИБЛИОГРАФИЧЕСКИЙ СПИСОК'], label: 'Список использованных источников' },
     { key: 'prilozheniya', names: ['ПРИЛОЖЕНИЯ', 'ПРИЛОЖЕНИЕ'], label: 'Приложения' },
   ];
   const STRUCT_ORDER = STRUCTURAL.map((s) => s.key);
@@ -135,6 +135,7 @@
     const roles = new Array(blocks.length);
     const numberedHeadings = [];
     const titleEnd = computeTitleEnd(doc, forcedPageStarts || new Set([0]));
+    let inSources = false;
     // сначала разметим структурные заголовки и заголовки разделов
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i];
@@ -149,7 +150,7 @@
       for (const s of STRUCTURAL) {
         if (s.names.includes(upper) || (s.key === 'prilozheniya' && /^ПРИЛОЖЕНИЕ\s+[А-ЯЁ]/.test(upper))) { structKey = s.key; break; }
       }
-      if (structKey) { roles[i] = { role: 'structural', structKey }; continue; }
+      if (structKey) { roles[i] = { role: 'structural', structKey }; inSources = (structKey === 'istochniki'); continue; }
       // строки оглавления: поле PAGEREF/_Toc, отточие, вкладка с номером или стиль TOC
       const fldText = b.fieldText || '';
       if (/PAGEREF|_Toc\d/i.test(fldText) || /PAGEREF|_Toc\d/i.test(text) || isTOCLine(text) ||
@@ -178,8 +179,11 @@
       if (looksLikeFormula(t)) { roles[i] = { role: 'formula' }; continue; }
       if (/^где\s+/i.test(t)) { roles[i] = { role: 'where' }; continue; }
       // перечисление
+      if (inSources && b.numPr && b.numPr.numId) { roles[i] = { role: 'body' }; continue; } // нумерованный список литературы
       if (b.numPr && b.numPr.numId) { roles[i] = { role: 'list' }; continue; }
-      if (/^\s*[-–—•·]\s+/.test(text)) { roles[i] = { role: 'manualList' }; continue; }
+      // в списке источников нумерация «1. …» – это не перечисление
+      if (inSources && /^\s*\d{1,3}[.)]\s/.test(text)) { roles[i] = { role: 'body' }; continue; }
+      if (/^\s*(?:[-–—•·◦○▪∙*]|\d{1,3}[.)]|[а-яёa-z][.)])\s+\S/.test(text)) { roles[i] = { role: 'manualList' }; continue; }
       roles[i] = { role: 'body' };
     }
     // Оглавление: всё между «СОДЕРЖАНИЕ» и следующим структурным элементом – это TOC.
@@ -541,6 +545,22 @@
     checkPunctuation(blocks, roles, add);
     checkNumberingSequence(roles, blocks, add);
 
+    // Структурные заголовки печатают прописными буквами (СТУ, п. 6.1).
+    for (let i = 0; i < blocks.length; i++) {
+      const r = roles[i];
+      if (!r || r.role !== 'structural') continue;
+      if (blocks[i].kind !== 'p') continue;
+      const t = normText(blocks[i].text);
+      if (!t) continue;
+      if (/[а-яё]/.test(t)) add({
+        category: 'heading', level: 'warning', blockIndex: i,
+        title: 'Заголовок не прописными буквами',
+        detail: `«${t}» набран строчными буквами.`,
+        recommend: 'Структурные заголовки (СОДЕРЖАНИЕ, ВВЕДЕНИЕ, ЗАКЛЮЧЕНИЕ и другие) печатают прописными буквами полужирным шрифтом по центру.',
+        ref: 'СТУ 7.5–07–2021, п. 6.1',
+      });
+    }
+
     // ======================================================= Нумерация страниц
     checkPageNumbers(doc, add);
     checkHeaders(doc, add);
@@ -561,27 +581,34 @@
               recommend: 'Перед каждой позицией перечисления ставьте дефис. Буквы со скобкой допустимы только при ссылках в тексте.',
               ref: 'СТУ 7.5–07–2021, п. 7.4.3',
             });
-          } else if (lvl.fmt === 'bullet' && lvl.lvlText && /[•◦o\u25aa\u25cf]/.test(lvl.lvlText)) {
+          } else if (lvl.fmt === 'bullet' && lvl.lvlText && /[•◦o\u25aa\u25cf\u25e6\u00b7\uf0a7\uf0b7]/.test(lvl.lvlText)) {
             add({
               category: 'list', level: 'warning', blockIndex: i,
               title: 'Маркер перечисления не дефис',
               detail: `Маркер перечисления «${lvl.lvlText}».`,
-              recommend: 'Перед каждой позицией перечисления ставьте дефис.',
+              recommend: 'Перед каждой позицией перечисления ставьте дефис (тире) «–».',
               ref: 'СТУ 7.5–07–2021, п. 7.4.3',
             });
           }
         }
       }
       if (r.role === 'manualList') {
-        const m = (b.text || '').match(/^\s*([-–—•·])\s+/);
-        if (m && m[1] !== '-') {
-          add({
-            category: 'list', level: 'warning', blockIndex: i,
-            title: 'Маркер перечисления не дефис',
-            detail: `Позиция начинается с «${m[1]}».`,
-            recommend: 'Перед каждой позицией перечисления ставьте дефис.',
-            ref: 'СТУ 7.5–07–2021, п. 7.4.3',
-          });
+        const raw = b.text || '';
+        const m = raw.match(/^(\s*)([-–—•·◦○▪∙*]|\d{1,3}[.)]|[а-яёa-zA-Z][.)])(\s+)/);
+        if (m) {
+          const marker = m[2];
+          if (marker !== '-' && marker !== '–') {
+            const start = m[1].length;
+            const kind = /^\d/.test(marker) ? 'номер' : (/^[а-яёa-z]/i.test(marker) && /[.)]$/.test(marker) ? 'буква' : 'знак');
+            add({
+              category: 'list', level: 'warning', blockIndex: i,
+              chars: rangeAt(b, start, start + marker.length),
+              title: 'Маркер перечисления не по стандарту',
+              detail: `Позиция перечисления начинается с «${marker}» (${kind}).`,
+              recommend: 'Перед каждой позицией перечисления ставьте дефис (тире) «–». Букву со скобкой или цифру со скобкой используют только при ссылках в тексте.',
+              ref: 'СТУ 7.5–07–2021, п. 7.4.3',
+            });
+          }
         }
       }
     }
@@ -851,7 +878,7 @@
     }
     if (!found) {
       add({
-        category: 'pagenum', level: 'error', blockIndex: null,
+        category: 'pagenum', level: 'error', blockIndex: null, pageLevel: true,
         title: 'Не найдена нумерация страниц',
         detail: 'В колонтитулах нет поля номера страницы.',
         recommend: 'Проставьте номера страниц: внизу по центру, Times New Roman 14.',
@@ -860,21 +887,21 @@
       return;
     }
     if (!centerOK) add({
-      category: 'pagenum', level: 'error', blockIndex: null,
+      category: 'pagenum', level: 'error', blockIndex: null, pageLevel: true,
       title: 'Номер страницы не по центру',
       detail: 'Номер страницы в колонтитуле расположен не по центру.',
       recommend: 'Проставляйте номер страницы в центре нижней части листа.',
       ref: 'СТУ 7.5–07–2021, п. 7.2.1',
     });
     if (!fontOK) add({
-      category: 'pagenum', level: 'warning', blockIndex: null,
+      category: 'pagenum', level: 'warning', blockIndex: null, pageLevel: true,
       title: 'Оформление номера страницы',
       detail: 'Шрифт или размер номера страницы отличается от Times New Roman 14.',
       recommend: 'Оформляйте номер страницы шрифтом Times New Roman 14.',
       ref: 'СТУ 7.5–07–2021, п. 7.2.1',
     });
     if (!firstHidden) add({
-      category: 'pagenum', level: 'warning', blockIndex: 0,
+      category: 'pagenum', level: 'warning', blockIndex: 0, pageLevel: true,
       title: 'Номер может стоять на титульном листе',
       detail: 'Не включён особый колонтитул первой страницы.',
       recommend: 'На титульном листе номер страницы не проставляют (но он входит в общую нумерацию).',
@@ -1161,12 +1188,14 @@
         });
       }
       const text = b.text || '';
+      const urls = urlSpans(text);
       // Диапазоны чисел: должно быть тире «–» без пробелов
       const badRanges = [];
       if (!/TOC \\o|PAGEREF|INCLUDETEXT/i.test(text)) {
         let rm; const rangeRe = /(\d+(?:[.,]\d+)?)\s*([-–—])\s*(\d+(?:[.,]\d+)?)/g;
         const BOUND = /[0-9A-Za-zА-Яа-я_/.-]/;
         while ((rm = rangeRe.exec(text))) {
+          if (inSpans(rm.index, urls)) continue; // внутри ссылки дефис не трогаем
           const before = text[rm.index - 1] || '';
           const after = text[rm.index + rm[0].length] || '';
           if (BOUND.test(before) || BOUND.test(after)) continue; // часть URL, кода или даты
@@ -1185,7 +1214,7 @@
           ref: 'Правила русской типографики (Розенталь; Мильчин–Чельцова), gramota.ru',
         });
       }
-      // длинное тире
+      // длинное тире (внутри ссылок не считаем)
       const emCount = (text.match(/\u2014/g) || []).length;
       if (emCount) add({
         category: 'ai', level: 'info', ai: true, blockIndex: i, chars: phraseRanges(b, '\u2014'),
@@ -1202,15 +1231,15 @@
         recommend: 'В русском тексте тире между словами отделяют пробелами.',
         ref: 'Правила русской типографики',
       });
-      // Двойные пробелы
+      // Двойные пробелы (подсвечиваем сами пробелы)
       if (/[^ ] {2,}\S/.test(text)) add({
-        category: 'chars', level: 'info', ai: true, blockIndex: i, chars: phraseRanges(b, '  '),
+        category: 'chars', level: 'info', ai: true, blockIndex: i, chars: spaceRanges(b),
         title: 'Двойные пробелы', detail: 'В тексте подряд идут несколько пробелов.',
         recommend: 'Оставьте один пробел.', ref: 'СТУ 7.5–07–2021, п. 7.3.1',
       });
       // Пробел перед знаком препинания (кроме двоеточия – оно используется в библиографии)
       if (/\S\s+[,.;!?](?=\s|$)/.test(text)) add({
-        category: 'chars', level: 'warning', ai: true, blockIndex: i,
+        category: 'chars', level: 'warning', ai: true, blockIndex: i, chars: spaceBeforePunctRanges(b),
         title: 'Пробел перед знаком препинания', detail: 'Перед знаком препинания стоит пробел.',
         recommend: 'Уберите пробел перед знаком препинания.', ref: 'СТУ 7.5–07–2021, п. 7.3.1',
       });
@@ -1367,9 +1396,55 @@
     return res;
   }
 
+  // Диапазон символов по смещению в склеенном тексте абзаца (для точечной подсветки).
+  function rangeAt(block, start, end) {
+    const res = []; let off = 0;
+    for (let ri = 0; ri < (block.runs || []).length; ri++) {
+      const run = block.runs[ri]; const runLen = (run.text || '').length;
+      if (end > off && start < off + runLen) {
+        const a = Math.max(start, off), b = Math.min(end, off + runLen);
+        if (b > a) res.push({ runIndex: ri, ranges: [[a - off, b - off]] });
+      }
+      off += runLen;
+    }
+    return res;
+  }
+
+  // Адреса ссылок: внутри них дефисы и тире не трогаем, там это нормально.
+  function urlSpans(text) {
+    const re = /(?:https?:\/\/|ftp:\/\/|www\.)[^\s<>"']+/gi;
+    const out = []; let m;
+    while ((m = re.exec(text))) out.push([m.index, m.index + m[0].length]);
+    return out;
+  }
+  function inSpans(idx, spans) { for (const s of spans) if (idx >= s[0] && idx < s[1]) return true; return false; }
+
+  // Подсветка серий из двух и более пробелов.
+  function spaceRanges(block) {
+    const res = [];
+    for (let ri = 0; ri < (block.runs || []).length; ri++) {
+      const run = block.runs[ri];
+      if (!(run.parts && run.parts.length === 1 && run.parts[0].type === 'text')) continue;
+      const t = run.text || ''; const re = / {2,}/g; let m;
+      while ((m = re.exec(t))) res.push({ runIndex: ri, ranges: [[m.index, m.index + m[0].length]] });
+    }
+    return res;
+  }
+  // Подсветка пробелов перед знаком препинания.
+  function spaceBeforePunctRanges(block) {
+    const res = [];
+    for (let ri = 0; ri < (block.runs || []).length; ri++) {
+      const run = block.runs[ri];
+      if (!(run.parts && run.parts.length === 1 && run.parts[0].type === 'text')) continue;
+      const t = run.text || ''; const re = / +(?=[,.;!?](\s|$))/g; let m;
+      while ((m = re.exec(t))) if (m[0].length) res.push({ runIndex: ri, ranges: [[m.index, m.index + m[0].length]] });
+    }
+    return res;
+  }
+
   function checkAiMarkers(blocks, roles, add) {
     const ALLOW = new Set(['body', 'heading', 'structural', 'list', 'manualList', 'where', 'figureCaption', 'tableCaption']);
-    let notOnlyCount = 0, notOnlyFirst = -1;
+    const notOnlyBlocks = [];
     const phraseCount = {};
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i]; if (b.kind !== 'p') continue;
@@ -1390,8 +1465,8 @@
           ref: 'Правила русской типографики',
         });
       }
-      // «не только ..., но и ...» — считаем, но не помечаем по одному разу
-      if (/не только/.test(low) && /но и/.test(low)) { if (notOnlyFirst < 0) notOnlyFirst = i; notOnlyCount++; }
+      // «не только ..., но и ...» — считаем все места, помечаем при частом повторе
+      if (/не только/.test(low) && /но и/.test(low)) notOnlyBlocks.push(i);
       // вода: много служебных связок в абзаце
       if (normText(b.text).length > 260) {
         const found = AI_FILLER.filter((w) => low.indexOf(w) >= 0);
@@ -1412,10 +1487,18 @@
     for (const ph in phraseCount) {
       if (phraseCount[ph] >= 4) add({ category: 'ai', level: 'info', ai: true, blockIndex: firstAt[ph], title: 'Оборот часто повторяется', detail: `«${ph}» встречается в документе ${phraseCount[ph]} раз(а).`, recommend: 'Замените повторяющийся оборот синонимами или перепишите.', ref: 'Правила русской типографики' });
     }
-    if (notOnlyCount >= 3 && notOnlyFirst >= 0) {
-      const b0 = blocks[notOnlyFirst];
-      const chars = phraseRanges(b0, 'не только').concat(phraseRanges(b0, 'но и'));
-      add({ category: 'ai', level: 'info', ai: true, blockIndex: notOnlyFirst, chars: chars.length ? chars : undefined, title: 'Часто повторяется конструкция «не только ..., но и ...»', detail: `Конструкция встречается в документе ${notOnlyCount} раз(а).`, recommend: 'Разнообразьте формулировки, уберите повторяющийся шаблон.', ref: 'Правила русской типографики' });
+    if (notOnlyBlocks.length >= 3) {
+      notOnlyBlocks.forEach((bi, k) => {
+        const b0 = blocks[bi];
+        const chars = phraseRanges(b0, 'не только').concat(phraseRanges(b0, 'но и'));
+        add({
+          category: 'ai', level: 'info', ai: true, blockIndex: bi, chars: chars.length ? chars : undefined,
+          title: 'Оборот «не только …, но и …»',
+          detail: `Место ${k + 1} из ${notOnlyBlocks.length}: конструкция повторяется в документе ${notOnlyBlocks.length} раз(а).`,
+          recommend: 'Разнообразьте формулировки, уберите повторяющийся шаблон.',
+          ref: 'Правила русской типографики',
+        });
+      });
     }
   }
 

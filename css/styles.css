@@ -268,6 +268,12 @@ html.vt-wave::view-transition-old(root) { animation: none; }
 .stu-mk-err { border-bottom: 2px solid var(--err); }
 .stu-mk-warn { border-bottom: 2px solid var(--warn); }
 .stu-mk-info { border-bottom: 2px dotted var(--info); }
+/* Замечания уровня листа: обводим весь лист или колонтитул */
+.stu-page-err { outline: 2px solid var(--err); outline-offset: -3px; }
+.stu-page-warn { outline: 2px solid var(--warn); outline-offset: -3px; }
+.stu-page-info { outline: 2px solid var(--info); outline-offset: -3px; }
+.stu-footer.stu-page-err, .stu-footer.stu-page-warn, .stu-footer.stu-page-info { outline-offset: 2px; border-radius: 4px; }
+.stu-num-mark { color: #9a9a9a; border: 1px dashed var(--warn); border-radius: 4px; }
 /* следы машинного текста и нестандартные символы – жёлтым */
 .stu-ai { background: #FFF2A0; box-shadow: 0 0 0 1px #E9C93F inset; border-radius: 2px; }
 .stu-char-marker { display: inline-block; min-width: 8px; height: 8px; vertical-align: middle; background: #E9C93F; border: 1px solid #BFA200; border-radius: 2px; }

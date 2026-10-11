@@ -591,8 +591,9 @@
       // колонтитул
       const pageIndex = pages.length;
       const foot = footerForPage(section, pageIndex);
+      let fdiv = null;
       if (foot && (foot.hasPageField || (foot.text || '').trim())) {
-        const fdiv = document.createElement('div');
+        fdiv = document.createElement('div');
         fdiv.className = 'stu-footer';
         fdiv.style.left = MM(g.ml) + 'px';
         fdiv.style.width = MM(g.wmm - g.ml - g.mr) + 'px';
@@ -615,7 +616,7 @@
       wrap.appendChild(sheetRow);
       viewer.appendChild(wrap);
 
-      const page = { index: pages.length, wrap, sheet, flow, geom: g, section, blocks: [], textH: MM(g.hmm - g.mt - g.mb) };
+      const page = { index: pages.length, wrap, sheet, flow, geom: g, section, blocks: [], textH: MM(g.hmm - g.mt - g.mb), footerEl: fdiv };
       pages.push(page);
       return page;
     }
@@ -675,6 +676,7 @@
 
     const findingsByPage = new Map();
     for (const f of findings) {
+      if (f.pageLevel) continue;   // замечания уровня листа обработаем ниже
       const pi = f.blockIndex != null ? pageForBlock[f.blockIndex] : null;
       f.page = pi != null ? pi : null;
       if (pi != null) {
@@ -691,6 +693,50 @@
         const hr = page.wrap.querySelector('.stu-hrule');
         if (hr) hr.appendChild(mk);
       }
+    }
+
+    // Замечания уровня листа (поля, формат, номер страницы): обводим лист
+    // или колонтитул, чтобы было понятно, к какому месту относится замечание.
+    for (const f of findings) {
+      if (!f.pageLevel) continue;
+      let targets = [];
+      if (f.category === 'page' && f.blockIndex != null) {
+        const sect = doc.sections.find((s) => s.startIndex === f.blockIndex);
+        targets = pages.filter((p) => p.section === sect);
+      }
+      if (f.category === 'pagenum') {
+        if (f.blockIndex === 0) targets = [pages[0]];
+        else { const wp = pages.find((p) => p.footerEl); targets = wp ? [wp] : [pages[0]]; }
+      }
+      if (!targets.length) targets = [pages[0]];
+      f.page = targets[0].index;
+      let el = targets[0].sheet;
+      if (f.category === 'pagenum') {
+        const withFooter = targets[0].footerEl;
+        if (withFooter) el = withFooter;
+        else {
+          // на титульном листе колонтитула нет: показываем место, где стоял бы номер
+          const mark = document.createElement('div');
+          const g0 = targets[0].geom;
+          mark.className = 'stu-footer stu-num-mark';
+          mark.style.left = MM(g0.ml) + 'px';
+          mark.style.width = MM(g0.wmm - g0.ml - g0.mr) + 'px';
+          mark.style.bottom = MM(Math.max(4, (g0.mb - 8))) + 'px';
+          mark.textContent = String(targets[0].index + 1);
+          targets[0].sheet.appendChild(mark);
+          el = mark;
+        }
+      }
+      f.element = el;
+      const cls = f.level === 'error' ? 'stu-page-err' : (f.level === 'warning' ? 'stu-page-warn' : 'stu-page-info');
+      for (const p of targets) {
+        p.sheet.classList.add(cls);
+        p.sheet.setAttribute('data-page-finding', '1');
+        if (!findingsByPage.has(p.index)) findingsByPage.set(p.index, []);
+        findingsByPage.get(p.index).push(f);
+      }
+      if (el !== targets[0].sheet) el.classList.add(cls);
+      el.setAttribute('data-find-id', f.id);
     }
 
     return { pages, pageForBlock, blockEls, findingsByPage };

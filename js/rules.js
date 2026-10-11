@@ -1369,6 +1369,7 @@
 
   function checkAiMarkers(blocks, roles, add) {
     const ALLOW = new Set(['body', 'heading', 'structural', 'list', 'manualList', 'where', 'figureCaption', 'tableCaption']);
+    let notOnlyCount = 0, notOnlyFirst = -1;
     const phraseCount = {};
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i]; if (b.kind !== 'p') continue;
@@ -1389,8 +1390,8 @@
           ref: 'Правила русской типографики',
         });
       }
-      // «не только ..., но и ...»
-      if (/не только/.test(low) && /но и/.test(low)) add({ category: 'ai', level: 'info', ai: true, blockIndex: i, chars: phraseRanges(b, 'не только').concat(phraseRanges(b, 'но и')), title: 'Оборот, частый у машинного текста', detail: 'Конструкция «не только ..., но и ...».', recommend: 'По возможности перепишите фразу проще.', ref: 'Правила русской типографики' });
+      // «не только ..., но и ...» — считаем, но не помечаем по одному разу
+      if (/не только/.test(low) && /но и/.test(low)) { if (notOnlyFirst < 0) notOnlyFirst = i; notOnlyCount++; }
       // вода: много служебных связок в абзаце
       if (normText(b.text).length > 260) {
         const found = AI_FILLER.filter((w) => low.indexOf(w) >= 0);
@@ -1411,6 +1412,7 @@
     for (const ph in phraseCount) {
       if (phraseCount[ph] >= 4) add({ category: 'ai', level: 'info', ai: true, blockIndex: firstAt[ph], title: 'Оборот часто повторяется', detail: `«${ph}» встречается в документе ${phraseCount[ph]} раз(а).`, recommend: 'Замените повторяющийся оборот синонимами или перепишите.', ref: 'Правила русской типографики' });
     }
+    if (notOnlyCount >= 3) add({ category: 'ai', level: 'info', ai: true, blockIndex: notOnlyFirst, title: 'Часто повторяется конструкция «не только ..., но и ...»', detail: `Конструкция встречается в документе ${notOnlyCount} раз(а).`, recommend: 'Разнообразьте формулировки, уберите повторяющийся шаблон.', ref: 'Правила русской типографики' });
   }
 
   // Несоответствия оформления по всему документу: указываем конкретное место.

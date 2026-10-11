@@ -148,6 +148,7 @@
     if (src) {
       const img = document.createElement('img');
       img.src = src; img.className = 'stu-img';
+      img.style.verticalAlign = 'bottom';
       if (part.cx) img.style.maxWidth = Math.min(part.cx / 914400 * 96, MM(160)) + 'px';
       container.appendChild(img);
     } else {
@@ -345,6 +346,7 @@
     const role = ctx.roles && ctx.roles[blockIndex] ? ctx.roles[blockIndex].role : null;
     const hasTabs = (p.tabs && p.tabs.length) || /\t/.test(p.text || '');
     if (hasTabs && role !== 'toc') el.style.textAlign = 'left';   // позиции считаем сами, без двойного центрирования
+    if (role === 'image') { el.style.fontSize = '0'; el.style.lineHeight = 'normal'; }  // убираем лишний интервал вокруг картинки
     if (role === 'toc' && /\t/.test(p.text || '')) renderTocParagraph(el, p, blockIndex, ctx);
     else renderRuns(el, p, blockIndex, ctx);
     if (p.isEmpty && !ctx.markers[blockIndex]) { el.style.minHeight = el.style.lineHeight; }

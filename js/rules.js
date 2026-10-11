@@ -601,10 +601,10 @@
         }
         const before = blocks[i - 1], after = blocks[i + 1];
         if (before && before.kind === 'p' && !before.isEmpty && !isBlankish(before)) {
-          add({ category: 'formula', level: 'info', blockIndex: i, title: 'Формула не отделена свободной строкой сверху', detail: 'Перед формулой нет свободной строки.', recommend: 'Оставьте одну свободную строку выше формулы.', ref: 'СТУ 7.5–07–2021, п. 7.6.1' });
+          add({ category: 'formula', level: 'warning', blockIndex: i, title: 'Формула не отделена свободной строкой сверху', detail: 'Перед формулой нет свободной строки.', recommend: 'Оставьте одну свободную строку выше формулы.', ref: 'СТУ 7.5–07–2021, п. 7.6.1' });
         }
         if (after && after.kind === 'p' && !after.isEmpty && roles[i + 1] && roles[i + 1].role !== 'where') {
-          add({ category: 'formula', level: 'info', blockIndex: i, title: 'Формула не отделена свободной строкой снизу', detail: 'Под формулой нет свободной строки.', recommend: 'Оставьте одну свободную строку ниже формулы.', ref: 'СТУ 7.5–07–2021, п. 7.6.1' });
+          add({ category: 'formula', level: 'warning', blockIndex: i, title: 'Формула не отделена свободной строкой снизу', detail: 'Под формулой нет свободной строки.', recommend: 'Оставьте одну свободную строку ниже формулы.', ref: 'СТУ 7.5–07–2021, п. 7.6.1' });
         }
       }
       if (roles[i].role === 'where') {
@@ -629,6 +629,7 @@
 
     // ================================================================ Таблицы
     checkTables(doc, blocks, roles, add);
+    checkBlankLines(blocks, roles, add);
 
     // =========================================================== Иллюстрации
     checkFigures(blocks, roles, add);
@@ -1525,6 +1526,35 @@
         const hf = h[k]; if (!hf) continue;
         if (hf.hasPageField) add({ category: 'pagenum', level: 'warning', blockIndex: null, pageLevel: true, title: 'Номер страницы в верхнем колонтитуле', detail: 'Номер страницы расположен в верхнем колонтитуле.', recommend: 'Номер страницы ставят внизу по центру.', ref: 'СТУ 7.5–07–2021, п. 7.2.1' });
         else if ((hf.text || '').trim()) add({ category: 'page', level: 'info', blockIndex: null, pageLevel: true, title: 'Верхний колонтитул содержит текст', detail: `«${(hf.text || '').trim().slice(0, 60)}».`, recommend: 'Стандарт не предусматривает текст в верхнем колонтитуле.', ref: 'СТУ 7.5–07–2021, п. 7.2' });
+      }
+    }
+  }
+
+  // Пустая строка вокруг рисунков и таблиц (по стандарту объекты отделяют
+  // интервалом в одну строку).
+  function checkBlankLines(blocks, roles, add) {
+    const isBlank = (i) => blocks[i] && blocks[i].kind === 'p' && blocks[i].isEmpty;
+    const spAfter = (b) => (b && b.spacing && b.spacing.after) || 0;
+    const spBefore = (b) => (b && b.spacing && b.spacing.before) || 0;
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i]; const role = roles[i];
+      // рисунок: перед картинкой и после подписи
+      if (b.kind === 'p' && (role.role === 'image')) {
+        const prev = blocks[i - 1];
+        if (prev && prev.kind === 'p' && !prev.isEmpty && Math.max(spAfter(prev), spBefore(b)) < 200) add({ category: 'figure', level: 'warning', blockIndex: i, title: 'Нет пустой строки перед рисунком', detail: 'Перед рисунком нет пустой строки.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку сверху.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
+        const cap = (roles[i + 1] && roles[i + 1].role === 'figureCaption') ? i + 1 : null;
+        const afterIdx = cap != null ? cap + 1 : i + 1;
+        const nx = blocks[afterIdx];
+        if (nx && nx.kind === 'p' && !nx.isEmpty && Math.max(spAfter(blocks[afterIdx - 1]), spBefore(nx)) < 200) add({ category: 'figure', level: 'warning', blockIndex: cap != null ? cap : i, title: 'Нет пустой строки после рисунка', detail: 'После подписи рисунка сразу идёт текст.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку снизу.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
+      }
+      // таблица: перед подписью и после таблицы
+      if (b.kind === 'table') {
+        const capIdx = (i - 1 >= 0 && roles[i - 1].role === 'tableCaption') ? i - 1 : null;
+        const beforeIdx = capIdx != null ? capIdx - 1 : i - 1;
+        const pb = blocks[beforeIdx];
+        if (pb && pb.kind === 'p' && !pb.isEmpty && Math.max(spAfter(pb), capIdx != null ? spBefore(blocks[capIdx]) : spBefore(b)) < 200) add({ category: 'table', level: 'warning', blockIndex: capIdx != null ? capIdx : i, title: 'Нет пустой строки перед таблицей', detail: 'Перед таблицей нет пустой строки.', recommend: 'Отделяйте таблицу от текста интервалом в одну строку.', ref: 'СТУ 7.5–07–2021, п. 7.7.2' });
+        const nx = blocks[i + 1];
+        if (nx && nx.kind === 'p' && !nx.isEmpty && spAfter(b) < 200) add({ category: 'table', level: 'warning', blockIndex: i, title: 'Нет пустой строки после таблицы', detail: 'После таблицы сразу идёт текст.', recommend: 'Отделяйте таблицу от текста интервалом в одну строку.', ref: 'СТУ 7.5–07–2021, п. 7.7.2' });
       }
     }
   }

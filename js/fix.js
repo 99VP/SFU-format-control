@@ -225,13 +225,16 @@
       if (!(ha != null && num(ha) > 0) && (fl == null || num(fl) <= 0)) {
         setW(ind, 'firstLine', '708');
         if (ha != null) ind.removeAttribute('w:hanging');
+        // отступ всего абзаца слева переносим в отступ первой строки
+        const left = ind.getAttribute('w:left');
+        if (left != null && (parseInt(left, 10) || 0) > 0) ind.removeAttribute('w:left');
       }
     }
     if (a.spacing) {
       const sp = ensure(pPr, 'spacing', PPR_ORDER);
-      const line = sp.getAttribute('w:line');
-      const rule = sp.getAttribute('w:lineRule') || 'auto';
-      if (!line || (rule === 'auto' && line !== '240' && line !== '360')) { setW(sp, 'line', '240'); setW(sp, 'lineRule', 'auto'); }
+      const target = o.lineTarget === 360 ? '360' : '240';
+      setW(sp, 'line', target); setW(sp, 'lineRule', 'auto');
+      setW(sp, 'before', '0'); setW(sp, 'after', '0');
     }
   }
 

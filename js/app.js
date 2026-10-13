@@ -38,7 +38,7 @@
       const rec = { name: name, at: Date.now(), err: counts.error || 0, warn: counts.warning || 0, info: counts.info || 0, type: docType };
       let h = (await idbGet('history')) || [];
       h = h.filter((x) => x.name !== name);
-      h.unshift(rec); h = h.slice(0, 3);
+      h.unshift(rec); h = h.slice(0, 20);
       await idbPut('history', h);
       await idbPut('blob:' + name, buf);
     } catch (e) { }
@@ -51,7 +51,8 @@
     if (!h.length) { card.style.display = 'none'; list.innerHTML = ''; return; }
     card.style.display = '';
     list.innerHTML = '';
-    h.forEach((r) => {
+    const shown = state.historyExpanded ? h : h.slice(0, 5);
+    shown.forEach((r) => {
       const el = document.createElement('div'); el.className = 'hist-item';
       const nm = document.createElement('span'); nm.className = 'hist-name'; nm.textContent = r.name; nm.title = r.name;
       const meta = document.createElement('span'); meta.className = 'hist-meta';
@@ -68,6 +69,14 @@
       });
       list.appendChild(el);
     });
+    if (h.length > 5) {
+      const more = document.createElement('button');
+      more.className = 'btn';
+      more.style.marginTop = '8px';
+      more.textContent = state.historyExpanded ? 'Свернуть' : ('Показать все (' + h.length + ')');
+      more.addEventListener('click', () => { state.historyExpanded = !state.historyExpanded; renderHistory(); });
+      list.appendChild(more);
+    }
   }
   async function clearHistory() {
     try {
@@ -80,16 +89,13 @@
 
   const state = {
     doc: null, roles: null, findings: [], render: null,
-    fileName: '', docType: 'vkr', filter: 'all', buffer: null, autoType: null, manualType: false, titleEnd: 0,
+    fileName: '', docType: 'vkr', filter: 'all', buffer: null, autoType: null, manualType: false, titleEnd: 0, historyExpanded: false,
   };
 
   const DOC_TYPES = [
+    ['praktika', 'Отчёт о практике'], ['kursovaya', 'Курсовая'],
+    ['otchet', 'Отчёт (лаб. / практ.)'], ['referat', 'Реферат'],
     ['vkr', 'ВКР (бакалаврская)'], ['diplom', 'Дипломная (ДР / ДП)'],
-    ['magister', 'Магистерская'], ['kursovaya', 'Курсовая'],
-    ['referat', 'Реферат'], ['esse', 'Эссе'],
-    ['kontrolnaya', 'Контрольная'], ['rgz', 'РГЗ / РГР'],
-    ['praktika', 'Отчёт о практике'], ['praktika_letnyaya', 'Летняя практика'],
-    ['otchet', 'Отчёт (лаб. / практ.)'],
   ];
 
   // ------------------------------------------------------------------ theme
@@ -454,6 +460,16 @@
       }
     }
     opts.sources = src;
+    // единый межстрочный интервал по большинству
+    let n240 = 0, n360 = 0;
+    for (const b of state.doc.blocks) {
+      if (b.kind !== 'p') continue;
+      const sp = b.spacing || {};
+      if (sp.lineRule && sp.lineRule !== 'auto') continue;
+      const l = sp.line || 240;
+      if (l >= 330) n360++; else n240++;
+    }
+    opts.lineTarget = n360 > n240 ? 360 : 240;
     try {
       const meta = state.doc.blocks.map((b, i) => ({ kind: b.kind, role: state.roles[i] ? state.roles[i].role : 'body', level: state.roles[i] ? state.roles[i].level : 0 }));
       const bytes = STUFix.buildFixed(state.buffer, meta, opts);

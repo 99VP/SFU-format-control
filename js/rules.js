@@ -291,6 +291,7 @@
 
     // ============================================================ Шрифт и абзац
     const indentValues = [];
+    const lineFactors = [];
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i];
       if (b.kind !== 'p') continue;
@@ -339,10 +340,9 @@
           ref: 'СТУ 7.5–07–2021, п. 7.1.1',
         });
       }
-      // абзацный отступ 12,5 мм (учитываем и отступ всего абзаца слева)
-      const leftInd = b.ind ? (b.ind.left || 0) : 0;
+      // абзацный отступ 12,5 мм — требуется именно отступ первой строки
       if (effectiveFirst == null || effectiveFirst === 0) {
-        if (leftInd < 300) add({
+        add({
           category: 'font', level: 'error', blockIndex: i,
           title: 'Нет абзацного отступа',
           detail: 'Абзац без отступа первой строки, требуется 12,5 мм (5 знаков).',
@@ -359,6 +359,18 @@
         });
       } else {
         indentValues.push(effectiveFirst);
+      }
+      // интервала до и после абзаца быть не должно
+      const spB = (b.spacing && b.spacing.before) || 0;
+      const spA = (b.spacing && b.spacing.after) || 0;
+      if (spB > 0 || spA > 0) {
+        add({
+          category: 'font', level: 'warning', blockIndex: i,
+          title: 'Интервал до/после абзаца',
+          detail: 'У абзаца задан интервал до или после (в Word «добавить»).',
+          recommend: 'Уберите интервалы до и после абзаца (0 пт).',
+          ref: 'СТУ 7.5–07–2021, п. 7.1.1',
+        });
       }
       // межстрочный интервал
       let factor = null;
@@ -379,6 +391,24 @@
           title: 'Неверный межстрочный интервал',
           detail: `Интервал ${String(Math.round(factor * 100) / 100).replace('.', ',')}, требуется одинарный или полуторный.`,
           recommend: 'Задайте одинарный или полуторный межстрочный интервал.',
+          ref: 'СТУ 7.5–07–2021, п. 7.1.1',
+        });
+      } else {
+        lineFactors.push(Math.abs(factor - 1.5) < 0.02 ? 1.5 : 1);
+      }
+    }
+    // Смешивать одинарный и полуторный интервалы нельзя.
+    if (lineFactors.length) {
+      const n1 = lineFactors.filter((f) => f === 1).length;
+      const n15 = lineFactors.filter((f) => f === 1.5).length;
+      if (n1 > 0 && n15 > 0) {
+        const major = n1 >= n15 ? 'одинарный' : 'полуторный';
+        const minor = n1 >= n15 ? 'полуторный' : 'одинарный';
+        add({
+          category: 'font', level: 'warning', blockIndex: null,
+          title: 'Смешаны межстрочные интервалы',
+          detail: `В документе есть и одинарный (${n1}), и полуторный (${n15}) интервалы. Больше ${major} (${n1 >= n15 ? n1 : n15}).`,
+          recommend: `Оставьте один интервал по всему тексту: сейчас преобладает ${major}, а местами стоит ${minor}.`,
           ref: 'СТУ 7.5–07–2021, п. 7.1.1',
         });
       }

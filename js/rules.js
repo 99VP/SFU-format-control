@@ -1867,13 +1867,16 @@
       const next = nextIdx < blocks.length ? blocks[nextIdx] : null;
       // если рядом разрыв страницы и текст продолжается на новом листе — это не ошибка
       const skip = hasBreak(next) || (runStart > 0 && hasBreak(blocks[runStart - 1]));
-      if (runLen >= 2 && runStart >= (titleEnd || 0) && !skip) add({
-        category: 'chars', level: 'warning', blockIndex: runStart,
-        title: 'Двойной Enter (пустые абзацы)',
-        detail: `Подряд идёт пустых абзацев: ${runLen}.`,
-        recommend: 'Оставьте не более одного пустого абзаца; для новой страницы используйте разрыв страницы.',
-        ref: 'СТУ 7.5–07–2021, п. 7.3.1',
-      });
+      if (runLen >= 2 && runStart >= (titleEnd || 0) && !skip) {
+        const ids = []; for (let k = runStart; k < runStart + runLen; k++) ids.push(k);
+        add({
+          category: 'chars', level: 'warning', blockIndex: runStart, blockIndices: ids,
+          title: 'Двойной Enter (пустые абзацы)',
+          detail: `Подряд идёт пустых абзацев: ${runLen}.`,
+          recommend: 'Оставьте не более одного пустого абзаца; для новой страницы используйте разрыв страницы.',
+          ref: 'СТУ 7.5–07–2021, п. 7.3.1',
+        });
+      }
       runStart = -1; runLen = 0;
     };
     for (let i = 0; i <= blocks.length; i++) {

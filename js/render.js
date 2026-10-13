@@ -210,6 +210,7 @@
         const slice = text.slice(s, e);
         const sp = makeSpan(slice, run, blockIndex, runIndex, ctx);
         sp.classList.add(LEVEL_CLASS[mk.level] || 'stu-mk-info');
+        if (mk.punct) sp.classList.add('stu-mk-punct');
         if (mk.ai) sp.classList.add('stu-ai');
         if (/^[\u200B-\u200D\u2060\uFEFF\u00AD]+$/.test(slice)) sp.classList.add('stu-char-marker');
         container.appendChild(sp);
@@ -586,11 +587,15 @@
       if (f.blockIndex == null || f.pageLevel) continue;
       if (f.chars && f.chars.length) {
         const m = ctx.charMarks[f.blockIndex] = ctx.charMarks[f.blockIndex] || {};
-        for (const c of f.chars) for (const rng of c.ranges) (m[c.runIndex] = m[c.runIndex] || []).push({ start: rng[0], end: rng[1], level: f.level, ai: !!f.ai });
+        for (const c of f.chars) for (const rng of c.ranges) (m[c.runIndex] = m[c.runIndex] || []).push({ start: rng[0], end: rng[1], level: f.level, ai: !!f.ai, punct: f.category === 'punct' });
       }
       if (f.isMarker) {
         const cur = ctx.markerMarks[f.blockIndex];
         if (!cur || LEVEL_RANK[f.level] > LEVEL_RANK[cur]) ctx.markerMarks[f.blockIndex] = f.level;
+        continue;
+      }
+      if (f.blockIndices && f.blockIndices.length) {
+        for (const bi of f.blockIndices) (ctx.blockMarks[bi] = ctx.blockMarks[bi] || []).push(f.level);
         continue;
       }
       if (f.runIndices && f.runIndices.length) {
@@ -607,10 +612,11 @@
 
     const forcedPageStarts = global.STURules.computeForcedPageStarts(doc);
     const items = makeItems(doc, forcedPageStarts, roles);
-    // Каждый структурный элемент и каждый раздел (уровень 1) начинают с новой страницы.
+    // С новой страницы начинаем только структурные элементы (ВВЕДЕНИЕ, СОДЕРЖАНИЕ…).
+    // Ненумерованные заголовки не трогаем — как в Word.
     for (const it of items) {
       const r = roles[it.indices[0]];
-      if (r && (r.role === 'structural' || (r.role === 'heading' && r.level === 1))) it.forcedBefore = true;
+      if (r && r.role === 'structural') it.forcedBefore = true;
     }
     const pages = [];
     const pageForBlock = {};

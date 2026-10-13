@@ -271,7 +271,10 @@ html.vt-wave::view-transition-old(root) { animation: none; }
 .stu-rule-lab-v { position: absolute; left: 7px; font-size: 8.5px; color: #8a8a8a; transform: translateY(-5px); }
 
 /* page marks */
-.stu-marked { position: relative; cursor: pointer; }
+.stu-marked { position: relative; cursor: help; }
+.stu-mk-err, .stu-mk-warn, .stu-mk-info, .stu-mk-punct, .stu-ai { cursor: help; }
+/* выделять и копировать текст с пометкой можно */
+.stu-marked, .stu-marked *, .stu-mk-err, .stu-mk-warn, .stu-mk-info, .stu-mk-punct { -webkit-user-select: text; user-select: text; }
 .stu-mk-err { background: rgba(196,61,61,.16); box-shadow: inset 0 -2px 0 var(--err); }
 .stu-mk-warn { background: rgba(217,154,43,.16); box-shadow: inset 0 -2px 0 var(--warn); }
 .stu-mk-info { background: rgba(90,120,200,.14); box-shadow: inset 0 -2px 0 var(--info); }

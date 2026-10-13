@@ -930,10 +930,6 @@
         a.href = m[0];
         a.setAttribute('data-url', m[0]);
         a.textContent = m[0];
-        a.addEventListener('click', (e) => {
-          e.preventDefault(); e.stopPropagation();
-          if (global.STULink) global.STULink(m[0]); else window.open(m[0], '_blank', 'noopener');
-        });
         frag.appendChild(a);
         last = m.index + m[0].length;
       }

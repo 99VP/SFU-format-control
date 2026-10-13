@@ -705,6 +705,13 @@
     $('#link-no').addEventListener('click', () => { linkDlg.style.display = 'none'; pendingUrl = ''; });
     $('#link-yes').addEventListener('click', () => { if (pendingUrl) window.open(pendingUrl, '_blank', 'noopener'); linkDlg.style.display = 'none'; pendingUrl = ''; });
     linkDlg.addEventListener('click', (e) => { if (e.target === linkDlg) { linkDlg.style.display = 'none'; pendingUrl = ''; } });
+    // Делегирование: клик по любой ссылке в документе открывает окно с предупреждением.
+    document.addEventListener('click', (e) => {
+      const a = e.target && e.target.closest ? e.target.closest('.stu-link') : null;
+      if (!a) return;
+      e.preventDefault(); e.stopPropagation();
+      window.STULink(a.getAttribute('data-url') || a.getAttribute('href') || '');
+    }, true);
     const rbtn = $('#report-btn'); if (rbtn) rbtn.addEventListener('click', buildReport);
 
     // история проверок: очистка

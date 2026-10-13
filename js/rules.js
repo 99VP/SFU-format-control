@@ -931,8 +931,17 @@
         const before = text[m.index - 1] || '';
         const after = text.slice(end);
         const atEnd = /^[ \t\u00a0]*$/.test(after);
-        if (atEnd) {
-          // в конце абзаца точка должна стоять до скобок и без пробела после
+        const periodAfter = /^\s*\.\s*$/.test(after);
+        if (periodAfter) {
+          const dotPos = end + after.indexOf('.');
+          add({
+            category: 'sources', level: 'warning', blockIndex: i, chars: rangeAt(b, m.index, dotPos + 1),
+            title: 'Точка после отсылки к источнику',
+            detail: 'В конце абзаца точка должна стоять до квадратных скобок, а не после.',
+            recommend: 'Ставьте точку до квадратных скобок, без пробела: «текст.[7]».',
+            ref: 'СТУ 7.5–07–2021, п. 7.9.4',
+          });
+        } else if (atEnd) {
           if (after.length) add({
             category: 'sources', level: 'warning', blockIndex: i, chars: rangeAt(b, end, text.length),
             title: 'Пробел после отсылки к источнику',

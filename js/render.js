@@ -627,8 +627,8 @@
     const hl = textLeaves(head), tl = textLeaves(tail);
     let left = cut;
     for (const n of hl) { const t = n.nodeValue || ''; if (left >= t.length) { left -= t.length; } else { n.nodeValue = t.slice(0, left); left = 0; } }
-    left = cut;
-    for (const n of tl) { const t = n.nodeValue || ''; if (left >= t.length) { n.nodeValue = ''; left -= t.length; } else { n.nodeValue = t.slice(left).replace(/^\s+/, ''); left = 0; } }
+    left = cut; let firstTail = true;
+    for (const n of tl) { const t = n.nodeValue || ''; if (left >= t.length) { n.nodeValue = ''; left -= t.length; } else { const rest = t.slice(left); n.nodeValue = firstTail ? rest.replace(/^\s+/, '') : rest; left = 0; firstTail = false; } }
     if (!textLeaves(tail).some((n) => (n.nodeValue || '').trim())) return null;
     tail.removeAttribute('id');
     return { head, tail };

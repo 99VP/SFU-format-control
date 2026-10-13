@@ -242,15 +242,23 @@
       if (s > pos) { const sp = makeSpan(text.slice(pos, s), run, blockIndex, runIndex, ctx); container.appendChild(sp); }
       if (e > s) {
         const slice = text.slice(s, e);
-        const sp = makeSpan(slice, run, blockIndex, runIndex, ctx);
-        sp.classList.add(LEVEL_CLASS[mk.level] || 'stu-mk-info');
-        if (mk.punct) sp.classList.add('stu-mk-punct');
-        if (mk.src) sp.classList.add('stu-mk-src');
-        if (mk.ai) sp.classList.add('stu-ai');
-        if (mk.id) sp.setAttribute('data-find', mk.id);
-        if (/^[\u200B-\u200D\u2060\uFEFF\u00AD]+$/.test(slice)) sp.classList.add('stu-char-marker');
-        if (/^[ \t\u00a0]+$/.test(slice)) { sp.classList.add('stu-space-mark'); sp.style.whiteSpace = 'pre'; }
-        container.appendChild(sp);
+        // в оборотах подсвечиваем только слова, пробелы внутри не трогаем
+        // (для замечаний именно про пробелы — подсвечиваем и пробелы)
+        const pieces = mk.space ? [slice] : slice.split(/(\s+)/).filter((x) => x !== '');
+        for (const piece of pieces) {
+          const sp = makeSpan(piece, run, blockIndex, runIndex, ctx);
+          const isSpace = /^\s+$/.test(piece);
+          if (!isSpace || mk.space) {
+            sp.classList.add(LEVEL_CLASS[mk.level] || 'stu-mk-info');
+            if (mk.punct) sp.classList.add('stu-mk-punct');
+            if (mk.src) sp.classList.add('stu-mk-src');
+            if (mk.ai) sp.classList.add('stu-ai');
+            if (mk.id) sp.setAttribute('data-find', mk.id);
+            if (/^[\u200B-\u200D\u2060\uFEFF\u00AD]+$/.test(piece)) sp.classList.add('stu-char-marker');
+            if (isSpace) { sp.classList.add('stu-space-mark'); sp.style.whiteSpace = 'pre'; }
+          }
+          container.appendChild(sp);
+        }
       }
       pos = e;
     }
@@ -654,7 +662,7 @@
       if (f.title && /отступ/i.test(f.title)) { ctx.indentMark[f.blockIndex] = true; continue; }
       if (f.chars && f.chars.length) {
         const m = ctx.charMarks[f.blockIndex] = ctx.charMarks[f.blockIndex] || {};
-        for (const c of f.chars) for (const rng of c.ranges) (m[c.runIndex] = m[c.runIndex] || []).push({ start: rng[0], end: rng[1], level: f.level, ai: !!f.ai, punct: f.category === 'punct', src: f.category === 'sources', id: f.id });
+        for (const c of f.chars) for (const rng of c.ranges) (m[c.runIndex] = m[c.runIndex] || []).push({ start: rng[0], end: rng[1], level: f.level, ai: !!f.ai, punct: f.category === 'punct', src: f.category === 'sources', space: !!(f.title && /пробел/i.test(f.title)), id: f.id });
       }
       if (f.isMarker) {
         const cur = ctx.markerMarks[f.blockIndex];

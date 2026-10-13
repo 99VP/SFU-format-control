@@ -1951,7 +1951,7 @@
         const anchoredImg = (b.runs || []).some((r) => (r.parts || []).some((pp) => pp.type === 'drawing' && pp.anchor));
         const prev = blocks[i - 1];
         const prevRole = roles[i - 1] ? roles[i - 1].role : null;
-        if (prev && prev.kind === 'p' && !prev.isEmpty && (prevRole === 'body' || prevRole === 'where') && Math.max(spAfter(prev), spBefore(b)) < 200) add({ category: 'figure', level: 'warning', blockIndex: i, pageRel: [i - 1, i], blankInsert: { at: i, where: 'before' }, title: 'Нет пустой строки перед рисунком', detail: 'Перед рисунком нет пустой строки.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку сверху.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
+        if (prev && prev.kind === 'p' && !prev.isEmpty && (prevRole === 'body' || prevRole === 'where') && Math.max(spAfter(prev), spBefore(b)) < 200 && !anchoredImg) add({ category: 'figure', level: 'warning', blockIndex: i, pageRel: [i - 1, i], blankInsert: { at: i, where: 'before' }, title: 'Нет пустой строки перед рисунком', detail: 'Перед рисунком нет пустой строки.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку сверху.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
         const cap = (roles[i + 1] && roles[i + 1].role === 'figureCaption') ? i + 1 : null;
         const afterIdx = cap != null ? cap + 1 : i + 1;
         const nx = blocks[afterIdx];

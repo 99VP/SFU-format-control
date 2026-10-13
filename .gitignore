@@ -1,3 +1,21 @@
+# Документы и результаты проверки не коммитим
 test/*.docx
 test/*.pdf
 test/*.doc
+
+# Секреты и бэкапы — никогда не коммитим
+.env
+.env.*
+*.env
+*.key
+*.pem
+*.keystore
+keystore.properties
+*token*
+*secret*
+*password*
+*credential*
+*recovery*
+*backup*
+*бэкап*
+*.bak

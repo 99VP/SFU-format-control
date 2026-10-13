@@ -71,7 +71,7 @@
     if (kid(rPr, 'i')) o.italic = toggle(kid(rPr, 'i'));
     const u = kid(rPr, 'u'); if (u) o.underline = (attr(u, 'val') || 'single') !== 'none';
     if (kid(rPr, 'strike')) o.strike = toggle(kid(rPr, 'strike'));
-    const c = kid(rPr, 'color'); if (c) { const val = attr(c, 'val'); if (val && val !== 'auto') o.color = val; }
+    const c = kid(rPr, 'color'); if (c) { const val = attr(c, 'val'); if (val && val !== 'auto') o.color = val; const th = attr(c, 'themeColor'); if (th) o.themeColor = th; }
     const hl = kid(rPr, 'highlight'); if (hl) { const val = attr(hl, 'val'); if (val && val !== 'none') o.highlight = val; }
     if (kid(rPr, 'caps')) o.caps = toggle(kid(rPr, 'caps'));
     if (kid(rPr, 'smallCaps')) o.smallCaps = toggle(kid(rPr, 'smallCaps'));
@@ -332,6 +332,8 @@
         size: eff.size != null ? eff.size : 14,
         bold: !!eff.bold, italic: !!eff.italic, underline: !!eff.underline, caps: !!eff.caps,
         highlight: eff.highlight || null, colorVal: eff.color || null,
+        directColor: r.rPr && r.rPr.color ? r.rPr.color : null,
+        themeColor: (r.rPr && r.rPr.themeColor) || null,
         hasDrawing: r.parts.some((x) => x.type === 'drawing'),
         hasPageBreak: r.parts.some((x) => x.type === 'pagebreak'),
       });

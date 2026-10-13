@@ -124,6 +124,7 @@
     $('#fix-btn').style.display = 'none';
     const bb = $('#back-btn'); if (bb) bb.style.display = 'none';
     const rb = $('#report-btn'); if (rb) rb.style.display = 'none';
+    const tw = $('#toptype-wrap'); if (tw) tw.style.display = 'none';
     renderHistory();
   }
   function showProcessing(name) {
@@ -238,6 +239,8 @@
 
   function syncTypeChips() {
     document.querySelectorAll('#type-chips .type-chip').forEach((x) => x.classList.toggle('active', x.getAttribute('data-type') === state.docType));
+    const sel = $('#toptype'); if (sel) sel.value = state.docType;
+    const wrap = $('#toptype-wrap'); if (wrap) wrap.style.display = state.doc ? '' : 'none';
   }
 
   // Построить развёртку, досчитать проверки содержания по страницам, собрать панели.
@@ -544,6 +547,17 @@
       });
       tc.appendChild(b);
     });
+    // селектор вида документа в верхней панели
+    const topSel = $('#toptype');
+    if (topSel) {
+      DOC_TYPES.forEach(([id, label]) => { const o = document.createElement('option'); o.value = id; o.textContent = label; topSel.appendChild(o); });
+      topSel.value = state.docType;
+      topSel.addEventListener('change', () => {
+        state.docType = topSel.value; state.manualType = true;
+        syncTypeChips();
+        if (state.doc) rerun();
+      });
+    }
 
     // dropzone
     const drop = $('#drop-card');

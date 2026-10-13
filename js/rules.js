@@ -1216,7 +1216,7 @@
         if (r.italic) ital.push(ri);
         if (r.underline) und.push(ri);
         if (r.highlight) hl.push(ri);
-        const c = r.colorVal;
+        const c = r.directColor;
         if (c && /^[0-9a-fA-F]{6}$/.test(c) && c.toUpperCase() !== '000000') col.push(ri);
       });
       const mk = (arr, level, title, rec) => {

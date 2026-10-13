@@ -298,6 +298,8 @@
     }
     const cursor = { x: 0 };
     const marker = ctx.markers[blockIndex];
+    let listFirst = 0;
+    if (marker && role === 'list' && p.ind && p.ind.firstLine) listFirst = p.ind.firstLine;
     if (marker) {
       const firstRun = (p.runs || [])[0] || { size: 14 };
       const m = document.createElement('span');
@@ -307,15 +309,18 @@
       m.style.display = 'inline-block';
       m.style.width = '1.3em';
       m.style.textAlign = 'center';
+      // маркер ставим слева (0), а текст — на отступе, как в Word
+      if (listFirst) m.style.marginLeft = (-TW(listFirst)) + 'px';
       m.textContent = mk;
       styleSpan(m, firstRun, blockIndex, -1, ctx);
       m.style.fontFamily = FONT_STACK;   // маркер рисуем обычным шрифтом, без «квадратиков»
       const mkLvl = ctx.markerMarks[blockIndex];
       if (mkLvl) { m.classList.add(LEVEL_CLASS[mkLvl.level]); if (mkLvl.id) m.setAttribute('data-find', mkLvl.id); }
       container.appendChild(m);
-      cursor.x += PT((firstRun.size || 14)) * 0.6;
-      // небольшой отступ между маркером и текстом
-      const gap = document.createElement('span'); gap.className = 'stu-tab'; gap.style.display = 'inline-block'; gap.style.width = '0.35em'; container.appendChild(gap); cursor.x += PT((firstRun.size || 14)) * 0.35;
+      const mW = measure(mk, firstRun);
+      cursor.x += mW;
+      const gapW = listFirst ? Math.max(0, TW(listFirst) - mW) : PT((firstRun.size || 14)) * 0.35;
+      if (gapW > 0.5) { const sp = document.createElement('span'); sp.className = 'stu-tab'; sp.style.display = 'inline-block'; sp.style.width = gapW + 'px'; container.appendChild(sp); cursor.x += gapW; }
     }
     // Сегменты по табуляторам; позиции считаем абсолютно (как Word), затем
     // сдвигаем всю строку в соответствии с выравниванием абзаца.

@@ -490,7 +490,7 @@
     // Центрирование/право без табуляторов отдаём браузеру (как Word), поэтому
     // text-align трогаем только при табуляторах, где позиции считаем сами.
     if (hasTabs && role !== 'toc') el.style.textAlign = 'left';
-    if (role === 'image') { el.style.fontSize = '0'; el.style.lineHeight = 'normal'; }  // убираем лишний интервал вокруг картинки
+    if (role === 'image') { el.style.fontSize = '0'; el.style.lineHeight = 'normal'; el.style.marginLeft = '0'; el.style.marginRight = '0'; el.style.textIndent = '0'; }  // убираем лишний интервал вокруг картинки
     if (role === 'toc' && /\t/.test(p.text || '')) renderTocParagraph(el, p, blockIndex, ctx);
     else renderRuns(el, p, blockIndex, ctx);
     if (p.isEmpty && !ctx.markers[blockIndex]) { el.style.minHeight = el.style.lineHeight; }

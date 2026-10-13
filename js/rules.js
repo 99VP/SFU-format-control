@@ -211,7 +211,7 @@
       if (b.numPr && b.numPr.numId) { roles[i] = { role: 'list' }; continue; }
       // в списке источников нумерация «1. …» – это не перечисление
       if (inSources && /^\s*\d{1,3}[.)]\s/.test(text)) { roles[i] = { role: 'body' }; continue; }
-      if (/^\s*(?:[-–—•·◦○▪∙*]|\d{1,3}[.)]|[а-яёa-z][.)])\s+\S/.test(text)) { roles[i] = { role: 'manualList' }; continue; }
+      if (/^\s*(?:[-–—•·◦○▪∙*●■◼◆‣⁃\uf0a7\uf0b7\u25aa\u25cf\u25e6]|\d{1,3}[.)]|[а-яёa-z][.)])\s+\S/.test(text)) { roles[i] = { role: 'manualList' }; continue; }
       roles[i] = { role: 'body' };
     }
     // Оглавление: всё между «СОДЕРЖАНИЕ» и следующим структурным элементом – это TOC.
@@ -591,20 +591,19 @@
         const fl = b.ind ? b.ind.firstLine : null;
         const hang = b.ind ? b.ind.hanging : null;
         const eff = fl != null ? fl : (hang != null ? -hang : null);
-        if (!eff) add({
-          category: 'heading', level: 'warning', blockIndex: i,
-          title: 'Заголовок без абзацного отступа',
-          detail: `Заголовок «${t}» напечатан без абзацного отступа (выравнивание: ${jcName(b.jc)}).`,
-          recommend: 'Заголовки разделов и подразделов печатают с абзацного отступа (12,5 мм) и выравнивают по левому краю или по ширине.',
-          ref: 'СТУ 7.5–07–2021, п. 7.4.2',
-        });
-        if (b.jc === 'center' || b.jc === 'right' || b.jc === 'end') add({
-          category: 'heading', level: 'warning', blockIndex: i,
-          title: 'Заголовок выровнен не так',
-          detail: `Заголовок «${t}» выровнен: ${jcName(b.jc)}. Нужно по левому краю или по ширине, с абзацного отступа.`,
-          recommend: 'Установите выравнивание «по ширине» (или по левому краю) и абзацный отступ 12,5 мм.',
-          ref: 'СТУ 7.5–07–2021, п. 7.4.2',
-        });
+        const badAlign = (b.jc === 'center' || b.jc === 'right' || b.jc === 'end');
+        if (!eff || badAlign) {
+          const parts2 = [];
+          parts2.push('выравнивание — ' + jcName(b.jc));
+          if (!eff) parts2.push('абзацного отступа нет');
+          add({
+            category: 'heading', level: 'warning', blockIndex: i,
+            title: 'Заголовок оформлен не так',
+            detail: `Заголовок «${t}»: ${parts2.join(', ')}.`,
+            recommend: 'Заголовки разделов и подразделов печатают с абзацного отступа 12,5 мм и выравнивают по левому краю или по ширине.',
+            ref: 'СТУ 7.5–07–2021, п. 7.4.2',
+          });
+        }
       }
     }
     // Стиль и уровень заголовков, отделение от текста, последовательность нумерации
@@ -645,7 +644,7 @@
           const isTop = (b.numPr.ilvl || '0') === '0';
           if (isTop && lvl.fmt !== 'bullet') {
             add({
-              category: 'list', level: 'warning', blockIndex: i,
+              category: 'list', level: 'warning', blockIndex: i, isMarker: true,
               title: 'Перечисление не дефисом',
               detail: `Позиция перечисления обозначена не дефисом (формат «${lvl.fmt}»).`,
               recommend: 'Перед каждой позицией перечисления ставьте дефис. Буквы со скобкой допустимы только при ссылках в тексте.',
@@ -653,7 +652,7 @@
             });
           } else if (lvl.fmt === 'bullet' && lvl.lvlText && /[•◦o\u25aa\u25cf\u25e6\u00b7\uf0a7\uf0b7]/.test(lvl.lvlText)) {
             add({
-              category: 'list', level: 'warning', blockIndex: i,
+              category: 'list', level: 'warning', blockIndex: i, isMarker: true,
               title: 'Маркер перечисления не дефис',
               detail: `Маркер перечисления: ${markerName(lvl.lvlText)}.`,
               recommend: 'Перед каждой позицией перечисления ставьте дефис (тире) «–».',
@@ -664,7 +663,7 @@
       }
       if (r.role === 'manualList') {
         const raw = b.text || '';
-        const m = raw.match(/^(\s*)([-–—•·◦○▪∙*]|\d{1,3}[.)]|[а-яёa-zA-Z][.)])(\s+)/);
+        const m = raw.match(/^(\s*)([-–—•·◦○▪∙*●■◼◆‣⁃\uf0a7\uf0b7\u25aa\u25cf\u25e6]|\d{1,3}[.)]|[а-яёa-zA-Z][.)])(\s+)/);
         if (m) {
           const marker = m[2];
           if (marker !== '-' && marker !== '–') {
@@ -956,13 +955,17 @@
       const endsColon = last === ':';
       const endsPeriod = /[.!?\u2026]/.test(last);
       if (nextIsList) {
-        if (!endsColon) add({
-          category: 'punct', level: 'warning', blockIndex: i,
-          title: 'Нет двоеточия перед перечислением',
-          detail: `Перед перечислением абзац заканчивается «${last}».`,
-          recommend: 'Перед перечислением ставят двоеточие.',
-          ref: 'СТУ 7.5–07–2021, п. 7.4.3',
-        });
+        if (!endsColon) {
+          const full = blocks[i].text || '';
+          let cidx = -1; for (let k = full.length - 1; k >= 0; k--) { if (!/\s/.test(full[k])) { cidx = k; break; } }
+          add({
+            category: 'punct', level: 'warning', blockIndex: i, chars: cidx >= 0 ? rangeAt(blocks[i], cidx, full.length) : undefined,
+            title: 'Нет двоеточия перед перечислением',
+            detail: `Перед перечислением абзац заканчивается «${last}».`,
+            recommend: 'Перед перечислением ставят двоеточие.',
+            ref: 'СТУ 7.5–07–2021, п. 7.4.3',
+          });
+        }
       } else if (!endsPeriod) {
         const mLast = t.match(/([А-Яа-яЁёA-Za-z0-9]+)\s*$/);
         let chars;
@@ -1853,16 +1856,17 @@
   // Два и более пустых абзаца подряд (двойной Enter). Разрыв страницы учитываем:
   // если пустые абзацы стоят перед разрывом, текст просто уходит на новый лист.
   function checkDoubleEnter(blocks, titleEnd, add) {
-    const trailingBreak = (b) => {
-      if (!b || b.kind !== 'p' || !b.runs) return false;
-      const all = []; for (const r of b.runs) for (const p of (r.parts || [])) all.push(p);
-      while (all.length && all[all.length - 1].type === 'text' && all[all.length - 1].text === '') all.pop();
-      return !!(all.length && all[all.length - 1].type === 'pagebreak');
+    const hasBreak = (b) => {
+      if (!b || b.kind !== 'p') return false;
+      if (b.pageBreakBefore || b.hasPageBreak) return true;
+      if (b.runs) for (const r of b.runs) if ((r.parts || []).some((p) => p.type === 'pagebreak')) return true;
+      return false;
     };
     let runStart = -1, runLen = 0;
     const flush = (nextIdx) => {
       const next = nextIdx < blocks.length ? blocks[nextIdx] : null;
-      const skip = trailingBreak(next) || (next && next.pageBreakBefore) || (runStart > 0 && trailingBreak(blocks[runStart - 1]));
+      // если рядом разрыв страницы и текст продолжается на новом листе — это не ошибка
+      const skip = hasBreak(next) || (runStart > 0 && hasBreak(blocks[runStart - 1]));
       if (runLen >= 2 && runStart >= (titleEnd || 0) && !skip) add({
         category: 'chars', level: 'warning', blockIndex: runStart,
         title: 'Двойной Enter (пустые абзацы)',
@@ -1873,7 +1877,7 @@
       runStart = -1; runLen = 0;
     };
     for (let i = 0; i <= blocks.length; i++) {
-      const isEmpty = i < blocks.length && blocks[i].kind === 'p' && blocks[i].isEmpty && !trailingBreak(blocks[i]);
+      const isEmpty = i < blocks.length && blocks[i].kind === 'p' && blocks[i].isEmpty && !hasBreak(blocks[i]);
       if (isEmpty) { if (runStart < 0) runStart = i; runLen++; }
       else flush(i);
     }

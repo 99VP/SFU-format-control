@@ -272,9 +272,10 @@ html.vt-wave::view-transition-old(root) { animation: none; }
 
 /* page marks */
 .stu-marked { position: relative; cursor: pointer; }
-.stu-mk-err { border-bottom: 2px solid var(--err); }
-.stu-mk-warn { border-bottom: 2px solid var(--warn); }
-.stu-mk-info { border-bottom: 2px dotted var(--info); }
+.stu-mk-err { background: rgba(196,61,61,.16); box-shadow: inset 0 -2px 0 var(--err); }
+.stu-mk-warn { background: rgba(217,154,43,.16); box-shadow: inset 0 -2px 0 var(--warn); }
+.stu-mk-info { background: rgba(90,120,200,.14); box-shadow: inset 0 -2px 0 var(--info); }
+.stu-listmark.stu-mk-err, .stu-listmark.stu-mk-warn, .stu-listmark.stu-mk-info { border-radius: 3px; padding: 0 2px; }
 /* Замечания уровня листа: обводим весь лист или колонтитул */
 .stu-page-err { outline: 2px solid var(--err); outline-offset: -3px; }
 .stu-page-warn { outline: 2px solid var(--warn); outline-offset: -3px; }

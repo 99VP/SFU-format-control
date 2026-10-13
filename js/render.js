@@ -81,9 +81,11 @@
   // ------------------------------------------------------------- маркеры списков
   function bulletChar(lvlText) {
     if (!lvlText) return '\u2013';
-    const ch = lvlText.replace(/[\uF0A7\uF0B7]/g, '\u2022');
-    if (/^[\u2022\u25CF\u25AA\u25E6o\u00B7]$/.test(ch)) return ch === 'o' ? '\u2013' : ch;
-    if (ch === '-' || ch === '\u2013' || ch === '\u2014') return '\u2013';
+    let ch = lvlText.replace(/[\uF0A7\uF0B7\uF0FC\uF0D8\uF0A8]/g, '\u2022');
+    if (ch === 'o' || ch === '-') return '\u2013';
+    if (ch === '\u2013' || ch === '\u2014') return '\u2013';
+    if (/[\u2022\u25CF\u25AA\u25E6\u00B7\u25A0\u25AB\u25C6]/.test(ch)) return '\u2022';
+    if (/[\uE000-\uF8FF]/.test(ch)) return '\u2013';
     return ch;
   }
   function formatLevel(lvlText, numId, counters) {
@@ -247,6 +249,9 @@
       m.className = 'stu-listmark';
       m.textContent = marker + '\u00a0';
       styleSpan(m, firstRun, blockIndex, -1, ctx);
+      m.style.fontFamily = FONT_STACK;   // маркер рисуем обычным шрифтом, без «квадратиков»
+      const mkLvl = ctx.markerMarks[blockIndex];
+      if (mkLvl) m.classList.add(LEVEL_CLASS[mkLvl]);
       container.appendChild(m);
       cursor.x += measure(marker + '\u00a0', firstRun);
     }
@@ -576,12 +581,17 @@
   // ---------------------------------------------------------------- render
   function renderDocument(doc, roles, findings, viewer) {
     viewer.innerHTML = '';
-    const ctx = { doc, runMarks: {}, blockMarks: {}, charMarks: {}, aiBlock: {}, roles, markers: computeMarkers(doc), tabStep: TW((doc.settings && doc.settings.defaultTabStop) || 708) };
+    const ctx = { doc, runMarks: {}, blockMarks: {}, charMarks: {}, aiBlock: {}, markerMarks: {}, roles, markers: computeMarkers(doc), tabStep: TW((doc.settings && doc.settings.defaultTabStop) || 708) };
     for (const f of findings) {
       if (f.blockIndex == null || f.pageLevel) continue;
       if (f.chars && f.chars.length) {
         const m = ctx.charMarks[f.blockIndex] = ctx.charMarks[f.blockIndex] || {};
         for (const c of f.chars) for (const rng of c.ranges) (m[c.runIndex] = m[c.runIndex] || []).push({ start: rng[0], end: rng[1], level: f.level, ai: !!f.ai });
+      }
+      if (f.isMarker) {
+        const cur = ctx.markerMarks[f.blockIndex];
+        if (!cur || LEVEL_RANK[f.level] > LEVEL_RANK[cur]) ctx.markerMarks[f.blockIndex] = f.level;
+        continue;
       }
       if (f.runIndices && f.runIndices.length) {
         ctx.runMarks[f.blockIndex] = ctx.runMarks[f.blockIndex] || {};

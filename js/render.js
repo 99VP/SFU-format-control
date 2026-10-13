@@ -150,7 +150,7 @@
     // Плавающий рисунок на титульном листе выводим вне потока, иначе он
     // раздвигает строку и последняя строка титула уезжает на другой лист.
     const role = ctx.roles && ctx.roles[blockIndex] ? ctx.roles[blockIndex].role : null;
-    const floating = part.anchor && role === 'title';
+    const floating = part.anchor && (role === 'title' || !!part.flowless);
     if (src) {
       const img = document.createElement('img');
       img.src = src; img.className = 'stu-img';
@@ -612,11 +612,16 @@
 
     const forcedPageStarts = global.STURules.computeForcedPageStarts(doc);
     const items = makeItems(doc, forcedPageStarts, roles);
-    // С новой страницы начинаем только структурные элементы (ВВЕДЕНИЕ, СОДЕРЖАНИЕ…).
-    // Ненумерованные заголовки не трогаем — как в Word.
+    // С новой страницы начинаем только структурные элементы (ВВЕДЕНИЕ, СОДЕРЖАНИЕ…),
+    // но только если в файле уже нет разрыва рядом (иначе как в Word).
     for (const it of items) {
       const r = roles[it.indices[0]];
-      if (r && r.role === 'structural') it.forcedBefore = true;
+      if (r && r.role === 'structural') {
+        const prev = it.indices[0] > 0 ? doc.blocks[it.indices[0] - 1] : null;
+        const hasBreakNear = (doc.blocks[it.indices[0]] && doc.blocks[it.indices[0]].pageBreakBefore) || !!it.forcedBefore ||
+          (prev && prev.kind === 'p' && prev.runs && prev.runs.some((run) => (run.parts || []).some((p) => p.type === 'pagebreak')));
+        if (!hasBreakNear) it.forcedBefore = true;
+      }
     }
     const pages = [];
     const pageForBlock = {};

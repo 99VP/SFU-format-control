@@ -73,6 +73,13 @@
     return forms[2];
   }
   function lvlFromNumber(num) { return num.split('.').length; } // "1.2.3" → 3
+  // Есть ли в абзаце разрыв страницы (в начале, внутри или в конце).
+  function blockHasBreak(b) {
+    if (!b || b.kind !== 'p') return false;
+    if (b.pageBreakBefore || b.hasPageBreak) return true;
+    if (b.runs) for (const r of b.runs) if ((r.parts || []).some((p) => p.type === 'pagebreak')) return true;
+    return false;
+  }
   // Читаемое имя маркера перечисления (символы Symbol показываем словами).
   function markerName(t) {
     if (!t) return 'без символа';
@@ -510,7 +517,8 @@
       if (!isSec) continue;
       let k = i - 1, cnt = 0;
       while (k >= 0 && blocks[k].kind === 'p' && blocks[k].isEmpty) { cnt++; k--; }
-      if (cnt >= 2 && !blocks[i].pageBreakBefore) add({
+      const breakNear = blockHasBreak(blocks[i]) || (k >= 0 && blockHasBreak(blocks[k]));
+      if (cnt >= 2 && !blocks[i].pageBreakBefore && !breakNear) add({
         category: 'structure', level: 'info', blockIndex: i,
         title: 'Пустые строки вместо разрыва страницы',
         detail: `Перед заголовком «${normText(blocks[i].text)}» стоит пустых абзацев: ${cnt}.`,
@@ -703,8 +711,10 @@
         const want = isLast ? '.' : ';';
         const lastCh = t.slice(-1);
         if (t && lastCh !== want && !/[!?]$/.test(t)) {
+          const full2 = b.text || '';
+          let lidx = -1; for (let k = full2.length - 1; k >= 0; k--) { if (!/\s/.test(full2[k])) { lidx = k; break; } }
           add({
-            category: 'list', level: 'warning', blockIndex: i,
+            category: 'punct', level: 'warning', blockIndex: i, chars: lidx >= 0 ? rangeAt(b, lidx, full2.length) : undefined,
             title: 'Знак в конце позиции перечисления',
             detail: `Позиция заканчивается на «${lastCh || 'пробел'}», а ${isLast ? 'последняя позиция' : 'не последняя позиция'} должна заканчиваться на «${want}».`,
             recommend: isLast ? 'Последнюю позицию перечисления заканчивайте точкой.' : 'Не последнюю позицию перечисления заканчивайте точкой с запятой.',
@@ -967,14 +977,19 @@
           });
         }
       } else if (!endsPeriod) {
-        const mLast = t.match(/([А-Яа-яЁёA-Za-z0-9]+)\s*$/);
+        const full = blocks[i].text || '';
+        let lidx = -1; for (let k2 = full.length - 1; k2 >= 0; k2--) { if (!/\s/.test(full[k2])) { lidx = k2; break; } }
         let chars;
-        if (mLast) { const idx = (blocks[i].text || '').lastIndexOf(mLast[1]); if (idx >= 0) chars = rangeAt(blocks[i], idx, (blocks[i].text || '').length); }
+        if (lidx >= 0 && /[;,:\]\)»]/.test(full[lidx])) chars = rangeAt(blocks[i], lidx, full.length);
+        else {
+          const mLast = t.match(/([А-Яа-яЁёA-Za-z0-9]+)\s*$/);
+          if (mLast) { const idx = (blocks[i].text || '').lastIndexOf(mLast[1]); if (idx >= 0) chars = rangeAt(blocks[i], idx, full.length); }
+        }
         add({
           category: 'punct', level: 'error', blockIndex: i, chars: chars,
           title: 'В конце абзаца нет точки',
-          detail: `Абзац заканчивается «…${t.slice(-24)}».`,
-          recommend: 'Заканчивайте абзац точкой (или знаком !, ?).',
+          detail: `Абзац заканчивается на «${last}», а нужно точку. Сейчас: «…${t.slice(-24)}».`,
+          recommend: 'Замените последний знак на точку (или поставьте точку в конце).',
           ref: 'СТУ 7.5–07–2021, п. 7.3.1',
         });
       }

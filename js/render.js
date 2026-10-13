@@ -165,7 +165,9 @@
       if (wpx) img.style.width = wpx + 'px';
       else img.style.maxWidth = limit + 'px';
       if (hpx) img.style.height = hpx + 'px';
-      img.style.display = 'block';
+      // выравнивание по якорю: по центру / вправо; иначе в строке (рисунки могут идти в ряд)
+      if (part.hAlign === 'center') { img.style.display = 'block'; img.style.margin = '0 auto'; }
+      else if (part._block) img.style.display = 'block';
       // якорь: Word размещает плавающий рисунок ниже — добавляем отступ сверху
       if (part.anchor && !floating && part.offV != null && part.offV > 6) img.style.marginTop = Math.round(part.offV) + 'px';
       if (floating) {
@@ -312,7 +314,8 @@
       for (const it of segs[s]) renderPart(container, it.run, it.part, blockIndex, it.ri, ctx, cursor);
     }
     // плавающие рисунки выводим после текста абзаца (как в Word: текст, затем рисунок)
-    for (const part of ctx._defer) appendDrawing(container, part, ctx, blockIndex);
+    const hasText = /\S/.test((p.text || '').replace(/\uFFFC/g, ''));
+    for (const part of ctx._defer) { if (hasText) part._block = true; appendDrawing(container, part, ctx, blockIndex); }
     ctx._defer = null;
   }
 

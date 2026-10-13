@@ -298,8 +298,12 @@
     }
     const cursor = { x: 0 };
     const marker = ctx.markers[blockIndex];
-    let listFirst = 0;
-    if (marker && role === 'list' && p.ind && p.ind.firstLine) listFirst = p.ind.firstLine;
+    let listMarkerW = 0;
+    if (marker && role === 'list' && p.numPr && ctx.doc.numbering) {
+      const lvl = ctx.doc.numbering.level(p.numPr.numId, p.numPr.ilvl);
+      const li = lvl && lvl.ind;
+      if (li) listMarkerW = li.hanging || li.firstLine || 0;
+    }
     if (marker) {
       const firstRun = (p.runs || [])[0] || { size: 14 };
       const m = document.createElement('span');
@@ -307,16 +311,15 @@
       const mk = (String(marker).replace(/\s+$/, '').trim()) || '\u2013';
       m.style.whiteSpace = 'pre';
       m.style.display = 'inline-block';
-      m.style.width = '1.5em';
       m.style.textAlign = 'left';
-      m.style.marginRight = '0.35em';
+      if (listMarkerW) { m.style.width = Math.max(8, TW(listMarkerW) - 4) + 'px'; m.style.marginRight = '4px'; }
       m.textContent = mk;
       styleSpan(m, firstRun, blockIndex, -1, ctx);
       m.style.fontFamily = FONT_STACK;   // маркер рисуем обычным шрифтом, без «квадратиков»
       const mkLvl = ctx.markerMarks[blockIndex];
       if (mkLvl) { m.classList.add(LEVEL_CLASS[mkLvl.level]); if (mkLvl.id) m.setAttribute('data-find', mkLvl.id); }
       container.appendChild(m);
-      cursor.x += PT((firstRun.size || 14)) * 1.85;
+      cursor.x += listMarkerW ? TW(listMarkerW) : PT((firstRun.size || 14));
     }
     // Сегменты по табуляторам; позиции считаем абсолютно (как Word), затем
     // сдвигаем всю строку в соответствии с выравниванием абзаца.
@@ -471,6 +474,19 @@
     const needsPre = role === 'title' || /^\s/.test(p.text || '');
     el.style.whiteSpace = needsPre ? 'pre-wrap' : 'normal';
     styleParagraphText(el, p);
+    // Перечисления: два положения — маркер и текст (из нумерации Word: left/hanging).
+    if (role === 'list' && p.numPr && ctx.doc.numbering) {
+      const lvl = ctx.doc.numbering.level(p.numPr.numId, p.numPr.ilvl);
+      const li = lvl && lvl.ind;
+      if (li) {
+        let pad = (li.left || 0), ti = 0;
+        if (li.hanging) ti = -li.hanging;
+        else if (li.firstLine) { pad = (li.left || 0) + li.firstLine; ti = -li.firstLine; }
+        el.style.marginLeft = '0';
+        el.style.paddingLeft = TW(pad) + 'px';
+        el.style.textIndent = TW(ti) + 'px';
+      }
+    }
     const hasTabs = (p.tabs && p.tabs.length) || /\t/.test(p.text || '');
     // Центрирование/право без табуляторов отдаём браузеру (как Word), поэтому
     // text-align трогаем только при табуляторах, где позиции считаем сами.

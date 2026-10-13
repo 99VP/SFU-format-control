@@ -772,6 +772,7 @@
     checkBlankLines(blocks, roles, add);
     checkDoubleEnter(blocks, titleEnd, add);
     checkListNumbering(blocks, roles, add);
+    checkListIndent(doc, blocks, roles, add);
 
     // =========================================================== Иллюстрации
     checkFigures(blocks, roles, add);
@@ -1961,6 +1962,24 @@
         add({ category: 'list', level: 'warning', blockIndex: i, title: 'Нарушена нумерация списка', detail: `После «${prev}» идёт «${n}», а должно быть «${prev + 1}».`, recommend: 'Нумеруйте позиции по порядку, без пропусков.', ref: 'СТУ 7.5–07–2021, п. 7.4.3' });
       }
       prev = n;
+    }
+  }
+
+  // Единообразие отступов маркера/текста в перечислениях (из нумерации Word).
+  function checkListIndent(doc, blocks, roles, add) {
+    if (!doc.numbering) return;
+    const seen = {};
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i]; if (b.kind !== 'p' || !b.numPr) continue;
+      const r = roles[i]; if (!r || (r.role !== 'list' && r.role !== 'manualList')) continue;
+      const lvl = doc.numbering.level(b.numPr.numId, b.numPr.ilvl); if (!lvl || !lvl.ind) continue;
+      const key = b.numPr.numId + '/' + (b.numPr.ilvl || '0');
+      const val = (lvl.ind.left || 0) + '/' + (lvl.ind.hanging || lvl.ind.firstLine || 0);
+      if (seen[key] == null) seen[key] = val;
+      else if (seen[key] !== val) {
+        add({ category: 'list', level: 'info', blockIndex: i, title: 'Разные отступы в перечислении', detail: 'Позиции перечисления имеют разный отступ маркера и текста.', recommend: 'Сделайте отступы маркера и текста одинаковыми во всём перечислении.', ref: 'СТУ 7.5–07–2021, п. 7.4.3' });
+        break;
+      }
     }
   }
 

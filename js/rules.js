@@ -747,6 +747,7 @@
     // ================================================================ Таблицы
     checkTables(doc, blocks, roles, add);
     checkBlankLines(blocks, roles, add);
+    checkDoubleEnter(blocks, titleEnd, add);
 
     // =========================================================== Иллюстрации
     checkFigures(blocks, roles, add);
@@ -940,8 +941,11 @@
           ref: 'СТУ 7.5–07–2021, п. 7.4.3',
         });
       } else if (!endsPeriod) {
+        const mLast = t.match(/([А-Яа-яЁёA-Za-z0-9]+)\s*$/);
+        let chars;
+        if (mLast) { const idx = (blocks[i].text || '').lastIndexOf(mLast[1]); if (idx >= 0) chars = rangeAt(blocks[i], idx, idx + mLast[1].length); }
         add({
-          category: 'punct', level: 'warning', blockIndex: i,
+          category: 'punct', level: 'warning', blockIndex: i, chars: chars,
           title: 'В конце абзаца нет точки',
           detail: `Абзац заканчивается «…${t.slice(-24)}».`,
           recommend: 'Заканчивайте абзац точкой (или знаком !, ?).',
@@ -1753,6 +1757,25 @@
 
   // Пустая строка вокруг рисунков и таблиц (по стандарту объекты отделяют
   // интервалом в одну строку).
+  // Два и более пустых абзаца подряд (двойной Enter).
+  function checkDoubleEnter(blocks, titleEnd, add) {
+    let runStart = -1, runLen = 0;
+    for (let i = 0; i <= blocks.length; i++) {
+      const isEmpty = i < blocks.length && blocks[i].kind === 'p' && blocks[i].isEmpty;
+      if (isEmpty) { if (runStart < 0) runStart = i; runLen++; }
+      else {
+        if (runLen >= 2 && runStart >= (titleEnd || 0)) add({
+          category: 'chars', level: 'warning', blockIndex: runStart,
+          title: 'Двойной Enter (пустые абзацы)',
+          detail: `Подряд идёт пустых абзацев: ${runLen}.`,
+          recommend: 'Оставьте не более одного пустого абзаца; для новой страницы используйте разрыв страницы.',
+          ref: 'СТУ 7.5–07–2021, п. 7.3.1',
+        });
+        runStart = -1; runLen = 0;
+      }
+    }
+  }
+
   function checkBlankLines(blocks, roles, add) {
     const isBlank = (i) => blocks[i] && blocks[i].kind === 'p' && blocks[i].isEmpty;
     const spAfter = (b) => (b && b.spacing && b.spacing.after) || 0;

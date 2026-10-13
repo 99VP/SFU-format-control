@@ -464,15 +464,7 @@
         items.push({ indices: [i, i + 1], forcedBefore: forcedPageStarts.has(i) || !!b.pageBreakBefore, sectionStart: sectionStarts.has(i) });
         i++; continue;
       }
-      // Рисунок и подпись держим вместе; подпись всегда под рисунком.
-      if (roleOf(i) === 'image' && roleOf(i + 1) === 'figureCaption') {
-        items.push({ indices: [i, i + 1], forcedBefore: forcedPageStarts.has(i) || !!b.pageBreakBefore, sectionStart: sectionStarts.has(i) });
-        i++; continue;
-      }
-      if (roleOf(i) === 'figureCaption' && roleOf(i + 1) === 'image') {
-        items.push({ indices: [i + 1, i], forcedBefore: forcedPageStarts.has(i) || !!b.pageBreakBefore, sectionStart: sectionStarts.has(i) });
-        i++; continue;
-      }
+      // (рисунок и подпись не группируем — как в Word, поток сохраняем)
       const all = [];
       if (b.kind === 'p' && b.runs) for (const r of b.runs) for (const pp of (r.parts || [])) all.push(pp);
       while (all.length && all[all.length - 1].type === 'text' && all[all.length - 1].text === '') all.pop();

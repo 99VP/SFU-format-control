@@ -208,7 +208,7 @@
   }
 
   // Позиционирование рисунка по якорю Word (абсолютно), с резервированием высоты.
-  function placeAnchored(container, part, ctx, blockIndex) {
+  function placeAnchored(container, part, ctx, blockIndex, hasText) {
     const node = appendDrawing(container, Object.assign({}, part, { hAlign: null, _block: false }), ctx, blockIndex);
     if (!node) return;
     const wpx = part.cx ? (part.cx / 914400) * 96 : null;
@@ -220,7 +220,9 @@
     else if (part.hAlign === 'right') left = Math.max(0, tw - (wpx || 0));
     else if (part.relH === 'column' || part.relH === 'character') left = part.offH || 0;
     else if (part.relH === 'margin' || part.relH === 'page') left = (part.offH || 0) - ml;
-    const top = Math.max(-8, part.offV || 0);
+    // если в абзаце есть текст — рисунок ставим ниже текста, чтобы не накладывался
+    let top = Math.max(-8, part.offV || 0);
+    if (hasText) top = Math.max(top, container.offsetHeight || 0);
     node.style.position = 'absolute';
     node.style.left = Math.max(0, left) + 'px';
     node.style.top = top + 'px';
@@ -343,7 +345,7 @@
     // плавающие рисунки выводим после текста абзаца (как в Word: текст, затем рисунок)
     const hasText = /\S/.test((p.text || '').replace(/\uFFFC/g, ''));
     for (const part of ctx._defer) {
-      if (part.anchor && part.wrap === 'wrapTopAndBottom') placeAnchored(container, part, ctx, blockIndex);
+      if (part.anchor && part.wrap === 'wrapTopAndBottom') placeAnchored(container, part, ctx, blockIndex, hasText);
       else { if (hasText) part._block = true; appendDrawing(container, part, ctx, blockIndex); }
     }
     ctx._defer = null;

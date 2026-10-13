@@ -503,7 +503,8 @@
     const ai = ctx.aiBlock[blockIndex];
     const src = ctx.blockSrc && ctx.blockSrc[blockIndex];
     const ind = ctx.indentMark && ctx.indentMark[blockIndex];
-    if ((!marks || !marks.length) && !ai && !src && !ind) return;
+    const ul = ctx.blockUnderline && ctx.blockUnderline[blockIndex];
+    if ((!marks || !marks.length) && !ai && !src && !ind && !ul) return;
     if (marks && marks.length) {
       let worst = 'info';
       for (const lv of marks) if (LEVEL_RANK[lv] > LEVEL_RANK[worst]) worst = lv;
@@ -512,6 +513,7 @@
     if (ai) el.classList.add('stu-ai');
     if (src) el.classList.add('stu-src-block');
     if (ind) el.classList.add('stu-indent-line');
+    if (ul) el.classList.add(ul === 'error' ? 'stu-ul-err' : (ul === 'warning' ? 'stu-ul-warn' : 'stu-ul-info'));
     el.classList.add('stu-marked');
     el.setAttribute('data-findings', (marks ? marks.length : 0) + (ai ? 1 : 0));
     if (ctx.blockFind[blockIndex] != null) el.setAttribute('data-find', ctx.blockFind[blockIndex]);
@@ -675,7 +677,7 @@
   // ---------------------------------------------------------------- render
   function renderDocument(doc, roles, findings, viewer) {
     viewer.innerHTML = '';
-    const ctx = { doc, runMarks: {}, blockMarks: {}, charMarks: {}, aiBlock: {}, markerMarks: {}, blockFind: {}, blockSrc: {}, indentMark: {}, roles, markers: computeMarkers(doc), tabStep: TW((doc.settings && doc.settings.defaultTabStop) || 708) };
+    const ctx = { doc, runMarks: {}, blockMarks: {}, charMarks: {}, aiBlock: {}, markerMarks: {}, blockFind: {}, blockSrc: {}, blockUnderline: {}, indentMark: {}, roles, markers: computeMarkers(doc), tabStep: TW((doc.settings && doc.settings.defaultTabStop) || 708) };
     for (const f of findings) {
       if (f.blockIndex == null || f.pageLevel) continue;
       if (ctx.blockFind[f.blockIndex] == null) ctx.blockFind[f.blockIndex] = f.id;
@@ -687,6 +689,12 @@
       if (f.isMarker) {
         const cur = ctx.markerMarks[f.blockIndex];
         if (!cur || LEVEL_RANK[f.level] > LEVEL_RANK[cur.level]) ctx.markerMarks[f.blockIndex] = { level: f.level, id: f.id };
+        continue;
+      }
+      // ошибки шрифта/размера — одна непрерывная линия под всем текстом (включая пробелы)
+      if (f.runIndices && f.runIndices.length && /шрифт|размер/i.test(f.title || '')) {
+        const cur = ctx.blockUnderline[f.blockIndex];
+        if (!cur || LEVEL_RANK[f.level] > LEVEL_RANK[cur]) ctx.blockUnderline[f.blockIndex] = f.level;
         continue;
       }
       if (f.category === 'sources' && !(f.chars && f.chars.length)) ctx.blockSrc[f.blockIndex] = true;

@@ -1009,7 +1009,7 @@
       if (/[ \t\u00a0]+$/.test(text)) {
         const m = text.match(/[ \t\u00a0]+$/);
         add({
-          category: 'punct', level: 'warning', blockIndex: i, chars: rangeAt(b, m.index, text.length),
+          category: 'chars', level: 'error', blockIndex: i, chars: rangeAt(b, m.index, text.length),
           title: 'Пробел в конце абзаца', detail: 'После последнего знака стоит пробел.',
           recommend: 'Уберите пробел в конце абзаца.',
           ref: 'СТУ 7.5–07–2021, п. 7.3.1',
@@ -1160,7 +1160,10 @@
         const m = t.match(/^Таблица\s+([А-ЯA-Z0-9.\-]+)\s*(–|-|—)\s*(.*)$/i);
         const fl = cap.ind ? cap.ind.firstLine : null;
         if (fl) add({ category: 'table', level: 'error', blockIndex: capIndex, title: 'Подпись таблицы с абзацным отступом', detail: `Подпись «${t}» начинается с абзацного отступа.`, recommend: 'Слово «Таблица» и подпись размещайте слева, без абзацного отступа.', ref: 'СТУ 7.5–07–2021, п. 7.7.3' });
-        if (m && m[2] === '-') add({ category: 'table', level: 'info', blockIndex: capIndex, title: 'Тире в подписи таблицы', detail: 'В подписи использован дефис вместо тире.', recommend: 'Номер и наименование таблицы разделяйте тире.', ref: 'СТУ 7.5–07–2021, п. 7.7.3' });
+        if (m && m[2] === '-') {
+          const rawC = cap.text || ''; const dm = rawC.match(/\s[-]\s/); const di = dm ? dm.index + dm[0].indexOf('-') : -1;
+          add({ category: 'table', level: 'warning', blockIndex: capIndex, chars: di >= 0 ? rangeAt(cap, di, di + 1) : undefined, title: 'Тире в подписи таблицы', detail: 'В подписи использован дефис вместо тире.', recommend: 'Номер и наименование таблицы разделяйте тире.', ref: 'СТУ 7.5–07–2021, п. 7.7.3' });
+        }
         if (/\.[\s]*$/.test(t)) add({ category: 'table', level: 'error', blockIndex: capIndex, title: 'Точка в конце подписи таблицы', detail: `Подпись «${t}» заканчивается точкой.`, recommend: 'Точку после наименования таблицы не ставят.', ref: 'СТУ 7.5–07–2021, п. 7.7.3' });
         const capRuns = (cap.runs || []).filter((x) => normText(x.text));
         if (capRuns.length && capRuns.some((x) => Math.abs((x.size || 14) - 14) > 0.01)) add({ category: 'table', level: 'warning', blockIndex: capIndex, title: 'Размер шрифта подписи таблицы', detail: 'Подпись таблицы набрана не 14 размером.', recommend: 'Заголовок таблицы оформляйте 14 размером шрифта.', ref: 'СТУ 7.5–07–2021, п. 7.7.3' });
@@ -1252,7 +1255,11 @@
       const b = blocks[i];
       const t = normText(b.text);
       const m = t.match(/^Рисунок\s+([А-ЯA-Z0-9.\-]+)\s*(–|-|—)\s*(.*)$/i);
-      if (m && m[2] === '-') add({ category: 'figure', level: 'warning', blockIndex: i, title: 'Тире в подписи рисунка', detail: 'В подписи использован дефис вместо тире.', recommend: 'Номер и наименование рисунка разделяйте тире «–».', ref: 'СТУ 7.5–07–2021, п. 7.8.3' });
+      if (m && m[2] === '-') {
+        const rawC = b.text || ''; const dm = rawC.match(/\s[-]\s/);
+        const di = dm ? dm.index + dm[0].indexOf('-') : -1;
+        add({ category: 'figure', level: 'warning', blockIndex: i, chars: di >= 0 ? rangeAt(b, di, di + 1) : undefined, title: 'Тире в подписи рисунка', detail: 'В подписи использован дефис вместо тире.', recommend: 'Номер и наименование рисунка разделяйте тире «–».', ref: 'СТУ 7.5–07–2021, п. 7.8.3' });
+      }
       if (b.jc !== 'center') add({ category: 'figure', level: 'error', blockIndex: i, title: 'Подпись рисунка не по центру', detail: `Подпись «${t}» выровнена не по центру.`, recommend: 'Слово «Рисунок», номер и наименование печатайте по центру.', ref: 'СТУ 7.5–07–2021, п. 7.8.3' });
       const runs = (b.runs || []).filter((x) => normText(x.text));
       if (runs.length && runs.some((x) => Math.abs((x.size || 14) - 14) > 0.01)) add({ category: 'figure', level: 'warning', blockIndex: i, title: 'Размер шрифта подписи рисунка', detail: 'Подпись рисунка набрана не 14 размером.', recommend: 'Слово «Рисунок», номер и наименование печатайте Times New Roman 14.', ref: 'СТУ 7.5–07–2021, п. 7.8.3' });
@@ -1466,13 +1473,13 @@
       });
       // Двойные пробелы (подсвечиваем сами пробелы) — это ошибка набора, не признак ИИ
       if (/[^ ] {2,}\S/.test(text)) add({
-        category: 'chars', level: 'info', ai: false, blockIndex: i, chars: spaceRanges(b),
+        category: 'chars', level: 'error', ai: false, blockIndex: i, chars: spaceRanges(b),
         title: 'Двойные пробелы', detail: 'В тексте подряд идут несколько пробелов.',
         recommend: 'Оставьте один пробел.', ref: 'СТУ 7.5–07–2021, п. 7.3.1',
       });
       // Пробел перед знаком препинания (кроме двоеточия – оно используется в библиографии)
       if (/\S\s+[,.;!?](?=\s|$)/.test(text)) add({
-        category: 'chars', level: 'warning', ai: false, blockIndex: i, chars: spaceBeforePunctRanges(b),
+        category: 'chars', level: 'error', ai: false, blockIndex: i, chars: spaceBeforePunctRanges(b),
         title: 'Пробел перед знаком препинания', detail: 'Перед знаком препинания стоит пробел.',
         recommend: 'Уберите пробел перед знаком препинания.', ref: 'СТУ 7.5–07–2021, п. 7.3.1',
       });
@@ -1668,27 +1675,38 @@
   }
   function inSpans(idx, spans) { for (const s of spans) if (idx >= s[0] && idx < s[1]) return true; return false; }
 
-  // Подсветка серий из двух и более пробелов.
-  function spaceRanges(block) {
-    const res = [];
-    for (let ri = 0; ri < (block.runs || []).length; ri++) {
-      const run = block.runs[ri];
+  // Находит диапазоны по регулярному выражению в склеенном тексте прогонов
+  // (работает и когда пробелы лежат в отдельных прогонах).
+  function rangesForRegex(block, re) {
+    const runs = block.runs || [];
+    let full = ''; const map = [];
+    for (let ri = 0; ri < runs.length; ri++) {
+      const run = runs[ri];
       if (!(run.parts && run.parts.length === 1 && run.parts[0].type === 'text')) continue;
-      const t = run.text || ''; const re = / {2,}/g; let m;
-      while ((m = re.exec(t))) res.push({ runIndex: ri, ranges: [[m.index, m.index + m[0].length]] });
+      const t = run.text || '';
+      if (!t) continue;
+      map.push({ ri, start: full.length, len: t.length });
+      full += t;
+    }
+    const res = []; let m; re.lastIndex = 0;
+    while ((m = re.exec(full))) {
+      if (!m[0].length) { re.lastIndex++; continue; }
+      const s = m.index, e = m.index + m[0].length;
+      for (const mp of map) {
+        const a = Math.max(s, mp.start), b = Math.min(e, mp.start + mp.len);
+        if (b > a) res.push({ runIndex: mp.ri, ranges: [[a - mp.start, b - mp.start]] });
+      }
     }
     return res;
   }
+
+  // Подсветка серий из двух и более пробелов.
+  function spaceRanges(block) {
+    return rangesForRegex(block, / {2,}/g);
+  }
   // Подсветка пробелов перед знаком препинания.
   function spaceBeforePunctRanges(block) {
-    const res = [];
-    for (let ri = 0; ri < (block.runs || []).length; ri++) {
-      const run = block.runs[ri];
-      if (!(run.parts && run.parts.length === 1 && run.parts[0].type === 'text')) continue;
-      const t = run.text || ''; const re = / +(?=[,.;!?](\s|$))/g; let m;
-      while ((m = re.exec(t))) if (m[0].length) res.push({ runIndex: ri, ranges: [[m.index, m.index + m[0].length]] });
-    }
-    return res;
+    return rangesForRegex(block, / +(?=[,.;!?](\s|$))/g);
   }
 
   function checkAiMarkers(blocks, roles, add) {
@@ -1933,7 +1951,7 @@
         const anchoredImg = (b.runs || []).some((r) => (r.parts || []).some((pp) => pp.type === 'drawing' && pp.anchor));
         const prev = blocks[i - 1];
         const prevRole = roles[i - 1] ? roles[i - 1].role : null;
-        if (prev && prev.kind === 'p' && !prev.isEmpty && (prevRole === 'body' || prevRole === 'where') && Math.max(spAfter(prev), spBefore(b)) < 200 && !anchoredImg) add({ category: 'figure', level: 'warning', blockIndex: i, pageRel: [i - 1, i], blankInsert: { at: i, where: 'before' }, title: 'Нет пустой строки перед рисунком', detail: 'Перед рисунком нет пустой строки.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку сверху.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
+        if (prev && prev.kind === 'p' && !prev.isEmpty && (prevRole === 'body' || prevRole === 'where') && Math.max(spAfter(prev), spBefore(b)) < 200) add({ category: 'figure', level: 'warning', blockIndex: i, pageRel: [i - 1, i], blankInsert: { at: i, where: 'before' }, title: 'Нет пустой строки перед рисунком', detail: 'Перед рисунком нет пустой строки.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку сверху.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
         const cap = (roles[i + 1] && roles[i + 1].role === 'figureCaption') ? i + 1 : null;
         const afterIdx = cap != null ? cap + 1 : i + 1;
         const nx = blocks[afterIdx];

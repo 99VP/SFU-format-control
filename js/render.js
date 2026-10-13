@@ -248,6 +248,7 @@
         if (mk.ai) sp.classList.add('stu-ai');
         if (mk.id) sp.setAttribute('data-find', mk.id);
         if (/^[\u200B-\u200D\u2060\uFEFF\u00AD]+$/.test(slice)) sp.classList.add('stu-char-marker');
+        if (/^[ \t\u00a0]+$/.test(slice)) { sp.classList.add('stu-space-mark'); sp.style.whiteSpace = 'pre'; }
         container.appendChild(sp);
       }
       pos = e;
@@ -291,13 +292,15 @@
       const firstRun = (p.runs || [])[0] || { size: 14 };
       const m = document.createElement('span');
       m.className = 'stu-listmark';
-      m.textContent = marker + '\u00a0';
+      const mk = String(marker).replace(/\s+$/, '');
+      m.style.whiteSpace = 'pre';
+      m.textContent = mk + '\u00a0';
       styleSpan(m, firstRun, blockIndex, -1, ctx);
       m.style.fontFamily = FONT_STACK;   // маркер рисуем обычным шрифтом, без «квадратиков»
       const mkLvl = ctx.markerMarks[blockIndex];
       if (mkLvl) { m.classList.add(LEVEL_CLASS[mkLvl.level]); if (mkLvl.id) m.setAttribute('data-find', mkLvl.id); }
       container.appendChild(m);
-      cursor.x += measure(marker + '\u00a0', firstRun);
+      cursor.x += measure(mk + '\u00a0', firstRun);
     }
     // Сегменты по табуляторам; позиции считаем абсолютно (как Word), затем
     // сдвигаем всю строку в соответствии с выравниванием абзаца.

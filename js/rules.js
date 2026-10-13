@@ -1283,10 +1283,10 @@
       const cleanImg = normText((b.text || '').replace(/\uFFFC/g, ''));
       if (cleanImg) {
         add({
-          category: 'figure', level: 'warning', blockIndex: i,
+          category: 'figure', level: 'error', blockIndex: i,
           title: 'Нет пустой строки перед рисунком',
           detail: 'Текст и рисунок в одном абзаце, пустой строки перед рисунком нет.',
-          recommend: 'Отделяйте рисунок от текста пустой строкой сверху.',
+          recommend: 'Отделяйте рисунок от текста пустой строкой сверху (Enter).',
           ref: 'СТУ 7.5–07–2021, п. 7.8.1',
         });
       }

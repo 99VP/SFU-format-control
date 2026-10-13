@@ -177,6 +177,7 @@
         if (container.style.position !== 'relative') container.style.position = 'relative';
       }
       container.appendChild(img);
+      return img;
     } else if (part.txbx) {
       // Фигура-надпись: показываем её текст тем же размером, что в Word.
       const sp = document.createElement('span');
@@ -192,6 +193,7 @@
         if (container.style.position !== 'relative') container.style.position = 'relative';
       }
       container.appendChild(sp);
+      return sp;
     } else {
       const ph = document.createElement('span'); ph.className = 'stu-img-ph'; ph.textContent = '\u25A3 рисунок';
       if (floating) {
@@ -201,7 +203,32 @@
         if (container.style.position !== 'relative') container.style.position = 'relative';
       }
       container.appendChild(ph);
+      return ph;
     }
+  }
+
+  // Позиционирование рисунка по якорю Word (абсолютно), с резервированием высоты.
+  function placeAnchored(container, part, ctx, blockIndex) {
+    const node = appendDrawing(container, Object.assign({}, part, { hAlign: null, _block: false }), ctx, blockIndex);
+    if (!node) return;
+    const wpx = part.cx ? (part.cx / 914400) * 96 : null;
+    const hpx = part.cy ? (part.cy / 914400) * 96 : null;
+    const tw = ctx.textWidthPx || MM(170);
+    const ml = ctx.marginLeftPx || 0;
+    let left = 0;
+    if (part.hAlign === 'center') left = Math.max(0, (tw - (wpx || 0)) / 2);
+    else if (part.hAlign === 'right') left = Math.max(0, tw - (wpx || 0));
+    else if (part.relH === 'column' || part.relH === 'character') left = part.offH || 0;
+    else if (part.relH === 'margin' || part.relH === 'page') left = (part.offH || 0) - ml;
+    const top = Math.max(-8, part.offV || 0);
+    node.style.position = 'absolute';
+    node.style.left = Math.max(0, left) + 'px';
+    node.style.top = top + 'px';
+    node.style.margin = '0';
+    if (container.style.position !== 'relative') container.style.position = 'relative';
+    const need = top + (hpx || 0);
+    const cur = parseFloat(container.style.minHeight) || 0;
+    if (need > cur) container.style.minHeight = need + 'px';
   }
 
   function appendMarkedText(container, text, marks, run, blockIndex, runIndex, ctx, cursor) {
@@ -315,7 +342,10 @@
     }
     // плавающие рисунки выводим после текста абзаца (как в Word: текст, затем рисунок)
     const hasText = /\S/.test((p.text || '').replace(/\uFFFC/g, ''));
-    for (const part of ctx._defer) { if (hasText) part._block = true; appendDrawing(container, part, ctx, blockIndex); }
+    for (const part of ctx._defer) {
+      if (part.anchor && part.wrap === 'wrapTopAndBottom') placeAnchored(container, part, ctx, blockIndex);
+      else { if (hasText) part._block = true; appendDrawing(container, part, ctx, blockIndex); }
+    }
     ctx._defer = null;
   }
 
@@ -645,6 +675,7 @@
     function newPage(section) {
       const g = geomOf(section);
       ctx.textWidthPx = MM(g.wmm - g.ml - g.mr);
+      ctx.marginLeftPx = MM(g.ml);
       const wrap = document.createElement('div');
       wrap.className = 'stu-page-wrap';
       wrap.setAttribute('data-page', pages.length);

@@ -277,10 +277,11 @@
       const ext = g.getElementsByTagName('wp:extent')[0];
       if (ext) { cx = +ext.getAttribute('cx'); cy = +ext.getAttribute('cy'); }
       // Плавающий рисунок (anchor) не должен раздвигать строку, как в Word.
-      let anchor = false, offH = null, offV = null, relH = null, relV = null, hAlign = null;
+      let anchor = false, offH = null, offV = null, relH = null, relV = null, hAlign = null, wrap = null;
       const anc = g.getElementsByTagName('wp:anchor')[0];
       if (anc) {
         anchor = true;
+        for (const nm of ['wrapTopAndBottom', 'wrapSquare', 'wrapTight', 'wrapThrough', 'wrapNone']) if (anc.getElementsByTagName('wp:' + nm).length) { wrap = nm; break; }
         const ph = anc.getElementsByTagName('wp:positionH')[0];
         const pv = anc.getElementsByTagName('wp:positionV')[0];
         if (ph) { relH = ph.getAttribute('relativeFrom'); const oh = ph.getElementsByTagName('wp:posOffset')[0]; if (oh) offH = (+oh.textContent) / 914400 * 96; const al = ph.getElementsByTagName('wp:align')[0]; if (al) hAlign = (al.textContent || '').trim(); }
@@ -313,7 +314,7 @@
         const ln = g.getElementsByTagName('a:ln')[0];
         txbxBorder = !(ln && ln.getElementsByTagName('a:noFill').length);
       }
-      parts.push({ type: 'drawing', embed, cx, cy, anchor, offH, offV, relH, relV, hAlign, txbx, txbxSize, txbxBorder });
+      parts.push({ type: 'drawing', embed, cx, cy, anchor, offH, offV, relH, relV, hAlign, wrap, txbx, txbxSize, txbxBorder });
     }
     let text = '';
     for (const p of parts) {

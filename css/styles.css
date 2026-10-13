@@ -296,7 +296,9 @@ html.vt-wave::view-transition-old(root) { animation: none; }
 .stu-cell-p { margin: 0 !important; }
 .stu-img { max-width: 100%; height: auto; }
 .stu-img-ph { display: inline-block; border: 1px dashed #999; color: #666; font-size: 12px; padding: 2px 8px; border-radius: 4px; }
-.stu-txbx { display: inline-block; border: 1px solid #bbb; border-radius: 4px; padding: 2px 6px; white-space: pre-line; vertical-align: top; }
+.stu-txbx { display: inline-block; white-space: pre-line; vertical-align: top; }
+.stu-link { color: #2b6cb0; text-decoration: underline; cursor: pointer; }
+.link-url { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12.5px; word-break: break-all; background: var(--bg3); border-radius: 6px; padding: 8px 10px; margin: 8px 0; max-height: 30vh; overflow: auto; }
 .stu-flash { animation: flash 1.1s ease; }
 @keyframes flash { 0%,100% { background: transparent; } 30% { background: var(--accent-soft); } }
 

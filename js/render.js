@@ -171,10 +171,12 @@
       }
       container.appendChild(img);
     } else if (part.txbx) {
-      // Фигура-надпись: показываем её текст.
+      // Фигура-надпись: показываем её текст тем же размером, что в Word.
       const sp = document.createElement('span');
       sp.className = 'stu-txbx';
       sp.textContent = part.txbx;
+      if (part.txbxSize) sp.style.fontSize = PT(part.txbxSize) + 'px';
+      sp.style.lineHeight = '1.15';
       if (floating) {
         sp.style.position = 'absolute';
         sp.style.left = Math.max(0, part.offH != null ? part.offH : 0) + 'px';
@@ -793,7 +795,40 @@
       el.setAttribute('data-find-id', f.id);
     }
 
+    // Делаем ссылки в тексте кликабельными (с подтверждением на стороне интерфейса).
+    linkify(viewer);
+
     return { pages, pageForBlock, blockEls, findingsByPage };
+  }
+
+  function linkify(root) {
+    const nodes = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    let n; while ((n = walker.nextNode())) nodes.push(n);
+    for (const node of nodes) {
+      const text = node.nodeValue || '';
+      const re = /((?:https?:\/\/|ftp:\/\/|www\.)[^\s<>"']+)/gi;
+      if (!re.test(text)) continue;
+      re.lastIndex = 0;
+      const frag = document.createDocumentFragment();
+      let last = 0, m;
+      while ((m = re.exec(text))) {
+        if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+        const a = document.createElement('a');
+        a.className = 'stu-link';
+        a.href = m[0];
+        a.setAttribute('data-url', m[0]);
+        a.textContent = m[0];
+        a.addEventListener('click', (e) => {
+          e.preventDefault(); e.stopPropagation();
+          if (global.STULink) global.STULink(m[0]); else window.open(m[0], '_blank', 'noopener');
+        });
+        frag.appendChild(a);
+        last = m.index + m[0].length;
+      }
+      if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+      if (node.parentNode) node.parentNode.replaceChild(frag, node);
+    }
   }
 
   global.STURender = { renderDocument, geomOf, PX_PER_MM };

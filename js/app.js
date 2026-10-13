@@ -378,7 +378,11 @@
         (warn ? '<span class="badge warn">' + warn + '</span>' : '') +
         (info ? '<span class="badge info">' + info + '</span>' : '') +
         (!fs.length ? '<span class="badge ok">✓</span>' : '') + '</span>';
-      el.addEventListener('click', () => { p.wrap.scrollIntoView({ behavior: 'smooth', block: 'start' }); setActivePage(i); });
+      el.addEventListener('click', () => {
+        setActivePage(i);
+        if (fs.length) { focusFinding(fs[0]); }
+        else { p.wrap.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      });
       frag.appendChild(el);
     });
     wrap.innerHTML = '';
@@ -612,6 +616,13 @@
     $('#fix-cancel').addEventListener('click', () => { $('#fix-dialog').style.display = 'none'; });
     $('#fix-ok').addEventListener('click', exportFixed);
     $('#fix-dialog').addEventListener('click', (e) => { if (e.target === $('#fix-dialog')) $('#fix-dialog').style.display = 'none'; });
+
+    // Переход по ссылке с подтверждением
+    const linkDlg = $('#link-dialog'); let pendingUrl = '';
+    window.STULink = (url) => { pendingUrl = url; $('#link-url').textContent = url; linkDlg.style.display = 'flex'; };
+    $('#link-no').addEventListener('click', () => { linkDlg.style.display = 'none'; pendingUrl = ''; });
+    $('#link-yes').addEventListener('click', () => { if (pendingUrl) window.open(pendingUrl, '_blank', 'noopener'); linkDlg.style.display = 'none'; pendingUrl = ''; });
+    linkDlg.addEventListener('click', (e) => { if (e.target === linkDlg) { linkDlg.style.display = 'none'; pendingUrl = ''; } });
     const rbtn = $('#report-btn'); if (rbtn) rbtn.addEventListener('click', buildReport);
 
     // история проверок: очистка

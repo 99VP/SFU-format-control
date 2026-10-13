@@ -499,31 +499,20 @@
       }
       prevOrder = Math.max(prevOrder, ord);
     }
-    // каждый структурный элемент – с новой страницы
-    for (const f of foundStruct) {
-      if (f.index === 0) continue;
-      if (!forcedPageStarts.has(f.index)) {
-        add({
-          category: 'structure', level: 'warning', blockIndex: f.index,
-          title: 'Структурный элемент без новой страницы',
-          detail: `Элемент «${labelOf(f.key)}» не начинается с новой страницы.`,
-          recommend: `Начните «${labelOf(f.key).toUpperCase()}» с новой страницы.`,
-          ref: 'СТУ 7.5–07–2021, п. 6.1',
-        });
-      }
-    }
-    // каждый раздел (уровень 1) – с новой страницы
+    // Много пустых строк перед структурным элементом/разделом — заменить на разрыв.
     for (let i = 1; i < blocks.length; i++) {
-      const r = roles[i];
-      if (r && r.role === 'heading' && r.level === 1 && !forcedPageStarts.has(i)) {
-        add({
-          category: 'structure', level: 'warning', blockIndex: i,
-          title: 'Раздел без новой страницы',
-          detail: `Заголовок «${r.number ? r.number + ' ' : ''}${r.title || ''}» не начинается с новой страницы.`,
-          recommend: 'Начинайте каждый раздел с новой страницы.',
-          ref: 'СТУ 7.5–07–2021, п. 6.1',
-        });
-      }
+      const r = roles[i]; if (!r) continue;
+      const isSec = r.role === 'structural' || (r.role === 'heading' && (r.level === 1 || r.level === 0));
+      if (!isSec) continue;
+      let k = i - 1, cnt = 0;
+      while (k >= 0 && blocks[k].kind === 'p' && blocks[k].isEmpty) { cnt++; k--; }
+      if (cnt >= 2 && !blocks[i].pageBreakBefore) add({
+        category: 'structure', level: 'info', blockIndex: i,
+        title: 'Пустые строки вместо разрыва страницы',
+        detail: `Перед заголовком «${normText(blocks[i].text)}» стоит пустых абзацев: ${cnt}.`,
+        recommend: 'Уберите лишние пустые абзацы и начните раздел с новой страницы (разрыв страницы).',
+        ref: 'СТУ 7.5–07–2021, п. 6.1',
+      });
     }
 
     // =============================================================== Заголовки

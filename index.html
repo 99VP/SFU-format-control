@@ -151,6 +151,18 @@
     </div>
   </div>
 
+  <div class="modal-backdrop" id="link-dialog" style="display:none">
+    <div class="modal">
+      <h3>Переход по ссылке</h3>
+      <p class="modal-hint">Эта ссылка может быть небезопасной. Открыть её в новой вкладке?</p>
+      <div class="link-url" id="link-url"></div>
+      <div class="modal-actions">
+        <button class="btn" id="link-no">Нет</button>
+        <button class="btn primary" id="link-yes">Да, открыть</button>
+      </div>
+    </div>
+  </div>
+
   <div class="drop-overlay" id="drop-overlay" style="display:none"><span>Отпустите файл, чтобы проверить</span></div>
 
   <script src="vendor/fflate.min.js"></script>

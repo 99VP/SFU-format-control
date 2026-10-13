@@ -303,7 +303,11 @@
         walkT(tb);
         txbx = s.replace(/\n{2,}/g, '\n').trim();
       }
-      parts.push({ type: 'drawing', embed, cx, cy, anchor, offH, offV, relH, relV, txbx });
+      // размер шрифта внутри надписи (полуточки → пункты)
+      let txbxSize = null;
+      if (tb) for (const s of tb.getElementsByTagName('w:sz')) { const v = +s.getAttribute('w:val'); if (v && (txbxSize == null || v > txbxSize)) txbxSize = v; }
+      if (txbxSize) txbxSize = txbxSize / 2;
+      parts.push({ type: 'drawing', embed, cx, cy, anchor, offH, offV, relH, relV, txbx, txbxSize });
     }
     let text = '';
     for (const p of parts) {

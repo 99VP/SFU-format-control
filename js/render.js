@@ -170,6 +170,18 @@
         if (container.style.position !== 'relative') container.style.position = 'relative';
       }
       container.appendChild(img);
+    } else if (part.txbx) {
+      // Фигура-надпись: показываем её текст.
+      const sp = document.createElement('span');
+      sp.className = 'stu-txbx';
+      sp.textContent = part.txbx;
+      if (floating) {
+        sp.style.position = 'absolute';
+        sp.style.left = Math.max(0, part.offH != null ? part.offH : 0) + 'px';
+        sp.style.top = Math.max(-8, part.offV != null ? part.offV : 0) + 'px';
+        if (container.style.position !== 'relative') container.style.position = 'relative';
+      }
+      container.appendChild(sp);
     } else {
       const ph = document.createElement('span'); ph.className = 'stu-img-ph'; ph.textContent = '\u25A3 рисунок';
       if (floating) {

@@ -286,7 +286,24 @@
         if (ph) { relH = ph.getAttribute('relativeFrom'); const oh = ph.getElementsByTagName('wp:posOffset')[0]; if (oh) offH = (+oh.textContent) / 914400 * 96; }
         if (pv) { relV = pv.getAttribute('relativeFrom'); const ov = pv.getElementsByTagName('wp:posOffset')[0]; if (ov) offV = (+ov.textContent) / 914400 * 96; }
       }
-      parts.push({ type: 'drawing', embed, cx, cy, anchor, offH, offV, relH, relV });
+      // Текст внутри фигуры-надписи (если это не картинка).
+      let txbx = null;
+      const tb = g.getElementsByTagName('w:txbxContent')[0];
+      if (tb) {
+        let s = '';
+        const walkT = (n) => {
+          for (const c of n.childNodes) {
+            if (c.nodeType !== 1) continue;
+            if (c.localName === 't') s += c.textContent;
+            else if (c.localName === 'br') s += '\n';
+            else if (c.localName === 'p') { if (s) s += '\n'; walkT(c); }
+            else walkT(c);
+          }
+        };
+        walkT(tb);
+        txbx = s.replace(/\n{2,}/g, '\n').trim();
+      }
+      parts.push({ type: 'drawing', embed, cx, cy, anchor, offH, offV, relH, relV, txbx });
     }
     let text = '';
     for (const p of parts) {

@@ -302,18 +302,20 @@
       const firstRun = (p.runs || [])[0] || { size: 14 };
       const m = document.createElement('span');
       m.className = 'stu-listmark';
-      const mk = String(marker).replace(/\s+$/, '');
+      const mk = (String(marker).replace(/\s+$/, '').trim()) || '\u2013';
       m.style.whiteSpace = 'pre';
       m.style.display = 'inline-block';
-      m.style.width = '1.6em';
-      m.style.textAlign = 'left';
-      m.textContent = mk + '\u00a0';
+      m.style.width = '1.3em';
+      m.style.textAlign = 'center';
+      m.textContent = mk;
       styleSpan(m, firstRun, blockIndex, -1, ctx);
       m.style.fontFamily = FONT_STACK;   // маркер рисуем обычным шрифтом, без «квадратиков»
       const mkLvl = ctx.markerMarks[blockIndex];
       if (mkLvl) { m.classList.add(LEVEL_CLASS[mkLvl.level]); if (mkLvl.id) m.setAttribute('data-find', mkLvl.id); }
       container.appendChild(m);
-      cursor.x += measure(mk + '\u00a0', firstRun);
+      cursor.x += PT((firstRun.size || 14)) * 0.6;
+      // небольшой отступ между маркером и текстом
+      const gap = document.createElement('span'); gap.className = 'stu-tab'; gap.style.display = 'inline-block'; gap.style.width = '0.35em'; container.appendChild(gap); cursor.x += PT((firstRun.size || 14)) * 0.35;
     }
     // Сегменты по табуляторам; позиции считаем абсолютно (как Word), затем
     // сдвигаем всю строку в соответствии с выравниванием абзаца.
@@ -662,7 +664,8 @@
     const ctx = { doc, runMarks: {}, blockMarks: {}, charMarks: {}, aiBlock: {}, markerMarks: {}, blockFind: {}, blockSrc: {}, blockUnderline: {}, indentMark: {}, roles, markers: computeMarkers(doc), tabStep: TW((doc.settings && doc.settings.defaultTabStop) || 708) };
     for (const f of findings) {
       if (f.blockIndex == null || f.pageLevel) continue;
-      if (ctx.blockFind[f.blockIndex] == null) ctx.blockFind[f.blockIndex] = f.id;
+      const isChar = !!(f.chars && f.chars.length);
+      if (!isChar && !f.isMarker && ctx.blockFind[f.blockIndex] == null) ctx.blockFind[f.blockIndex] = f.id;
       if (f.title && /отступ/i.test(f.title)) { ctx.indentMark[f.blockIndex] = true; continue; }
       if (f.chars && f.chars.length) {
         const m = ctx.charMarks[f.blockIndex] = ctx.charMarks[f.blockIndex] || {};

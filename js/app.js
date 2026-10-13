@@ -377,16 +377,10 @@
     const v = $('#viewer');
     if (!v || v.__clickBound) return; v.__clickBound = true;
     v.addEventListener('click', (e) => {
-      // сначала конкретная подсветка (знак, слово, маркер), потом абзац
+      // открываем только то, на что навели (по конкретной подсветке)
       const fs = e.target.closest('[data-find]');
       if (fs) {
         const f = state.findings.find((x) => x.id === fs.getAttribute('data-find'));
-        if (f) { flashFinding(f); return; }
-      }
-      const el = e.target.closest('[data-block]');
-      if (el) {
-        const bi = +el.getAttribute('data-block');
-        const f = state.findings.find((x) => x.blockIndex === bi);
         if (f) { flashFinding(f); return; }
       }
       const pg = e.target.closest('[data-find-id]');

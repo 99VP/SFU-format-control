@@ -307,7 +307,13 @@
       let txbxSize = null;
       if (tb) for (const s of tb.getElementsByTagName('w:sz')) { const v = +s.getAttribute('w:val'); if (v && (txbxSize == null || v > txbxSize)) txbxSize = v; }
       if (txbxSize) txbxSize = txbxSize / 2;
-      parts.push({ type: 'drawing', embed, cx, cy, anchor, offH, offV, relH, relV, txbx, txbxSize });
+      // рамка надписи: если в фигуре линия отключена (a:noFill) — рамки нет
+      let txbxBorder = null;
+      if (tb || g.getElementsByTagName('wps:spPr').length) {
+        const ln = g.getElementsByTagName('a:ln')[0];
+        txbxBorder = !(ln && ln.getElementsByTagName('a:noFill').length);
+      }
+      parts.push({ type: 'drawing', embed, cx, cy, anchor, offH, offV, relH, relV, txbx, txbxSize, txbxBorder });
     }
     let text = '';
     for (const p of parts) {

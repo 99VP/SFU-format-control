@@ -590,8 +590,15 @@
         if (!eff) add({
           category: 'heading', level: 'warning', blockIndex: i,
           title: 'Заголовок без абзацного отступа',
-          detail: `Заголовок «${t}» напечатан без абзацного отступа.`,
-          recommend: 'Печатайте заголовки разделов и подразделов с абзацного отступа (12,5 мм).',
+          detail: `Заголовок «${t}» напечатан без абзацного отступа (выравнивание: ${jcName(b.jc)}).`,
+          recommend: 'Заголовки разделов и подразделов печатают с абзацного отступа (12,5 мм) и выравнивают по левому краю или по ширине.',
+          ref: 'СТУ 7.5–07–2021, п. 7.4.2',
+        });
+        if (b.jc === 'center' || b.jc === 'right' || b.jc === 'end') add({
+          category: 'heading', level: 'warning', blockIndex: i,
+          title: 'Заголовок выровнен не так',
+          detail: `Заголовок «${t}» выровнен: ${jcName(b.jc)}. Нужно по левому краю или по ширине, с абзацного отступа.`,
+          recommend: 'Установите выравнивание «по ширине» (или по левому краю) и абзацный отступ 12,5 мм.',
           ref: 'СТУ 7.5–07–2021, п. 7.4.2',
         });
       }
@@ -601,6 +608,7 @@
     checkHeadingSpacing(blocks, roles, add);
     checkPunctuation(blocks, roles, add);
     checkCitations(blocks, roles, add);
+    checkTextDetails(blocks, roles, add);
     checkNumberingSequence(roles, blocks, add);
 
     // Структурные заголовки печатают прописными буквами (СТУ, п. 6.1).
@@ -945,11 +953,52 @@
         let chars;
         if (mLast) { const idx = (blocks[i].text || '').lastIndexOf(mLast[1]); if (idx >= 0) chars = rangeAt(blocks[i], idx, idx + mLast[1].length); }
         add({
-          category: 'punct', level: 'warning', blockIndex: i, chars: chars,
+          category: 'punct', level: 'error', blockIndex: i, chars: chars,
           title: 'В конце абзаца нет точки',
           detail: `Абзац заканчивается «…${t.slice(-24)}».`,
           recommend: 'Заканчивайте абзац точкой (или знаком !, ?).',
           ref: 'СТУ 7.5–07–2021, п. 7.3.1',
+        });
+      }
+    }
+  }
+
+  // Прочие текстовые ошибки: пробел в конце абзаца, прописная после запятой,
+  // дефис вместо тире между словами (с точной подсветкой места).
+  function checkTextDetails(blocks, roles, add) {
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i]; if (b.kind !== 'p') continue;
+      const r = roles[i]; if (!r) continue;
+      if (r.role === 'title' || r.role === 'toc') continue;
+      const text = b.text || '';
+      if (!text.trim()) continue;
+      if (/[ \t\u00a0]+$/.test(text)) {
+        const m = text.match(/[ \t\u00a0]+$/);
+        add({
+          category: 'punct', level: 'warning', blockIndex: i, chars: rangeAt(b, m.index, text.length),
+          title: 'Пробел в конце абзаца', detail: 'После последнего знака стоит пробел.',
+          recommend: 'Уберите пробел в конце абзаца.',
+          ref: 'СТУ 7.5–07–2021, п. 7.3.1',
+        });
+      }
+      const reC = /,\s+([А-ЯЁ][а-яё]{2,})/g; let m2;
+      while ((m2 = reC.exec(text))) {
+        const start = m2.index + m2[0].length - m2[1].length;
+        add({
+          category: 'punct', level: 'warning', blockIndex: i, chars: rangeAt(b, start, start + m2[1].length),
+          title: 'Прописная буква после запятой', detail: `После запятой идёт слово «${m2[1]}» с прописной буквы.`,
+          recommend: 'После запятой слово продолжают со строчной буквы (кроме имён собственных).',
+          ref: 'Правила русской пунктуации',
+        });
+      }
+      const reH = /([^\s\d]) +- +([^\s\d])/g; let m3;
+      while ((m3 = reH.exec(text))) {
+        const hp = m3.index + m3[0].indexOf('-');
+        add({
+          category: 'chars', level: 'warning', ai: false, blockIndex: i, chars: rangeAt(b, hp, hp + 1),
+          title: 'Дефис вместо тире', detail: 'Между словами стоит дефис, а нужно тире.',
+          recommend: 'Между словами ставят тире «–» («Курс – это …»), дефис – только внутри слов.',
+          ref: 'Правила русской типографики',
         });
       }
     }
@@ -1757,22 +1806,32 @@
 
   // Пустая строка вокруг рисунков и таблиц (по стандарту объекты отделяют
   // интервалом в одну строку).
-  // Два и более пустых абзаца подряд (двойной Enter).
+  // Два и более пустых абзаца подряд (двойной Enter). Разрыв страницы учитываем:
+  // если пустые абзацы стоят перед разрывом, текст просто уходит на новый лист.
   function checkDoubleEnter(blocks, titleEnd, add) {
+    const trailingBreak = (b) => {
+      if (!b || b.kind !== 'p' || !b.runs) return false;
+      const all = []; for (const r of b.runs) for (const p of (r.parts || [])) all.push(p);
+      while (all.length && all[all.length - 1].type === 'text' && all[all.length - 1].text === '') all.pop();
+      return !!(all.length && all[all.length - 1].type === 'pagebreak');
+    };
     let runStart = -1, runLen = 0;
+    const flush = (nextIdx) => {
+      const next = nextIdx < blocks.length ? blocks[nextIdx] : null;
+      const skip = trailingBreak(next) || (next && next.pageBreakBefore) || (runStart > 0 && trailingBreak(blocks[runStart - 1]));
+      if (runLen >= 2 && runStart >= (titleEnd || 0) && !skip) add({
+        category: 'chars', level: 'warning', blockIndex: runStart,
+        title: 'Двойной Enter (пустые абзацы)',
+        detail: `Подряд идёт пустых абзацев: ${runLen}.`,
+        recommend: 'Оставьте не более одного пустого абзаца; для новой страницы используйте разрыв страницы.',
+        ref: 'СТУ 7.5–07–2021, п. 7.3.1',
+      });
+      runStart = -1; runLen = 0;
+    };
     for (let i = 0; i <= blocks.length; i++) {
-      const isEmpty = i < blocks.length && blocks[i].kind === 'p' && blocks[i].isEmpty;
+      const isEmpty = i < blocks.length && blocks[i].kind === 'p' && blocks[i].isEmpty && !trailingBreak(blocks[i]);
       if (isEmpty) { if (runStart < 0) runStart = i; runLen++; }
-      else {
-        if (runLen >= 2 && runStart >= (titleEnd || 0)) add({
-          category: 'chars', level: 'warning', blockIndex: runStart,
-          title: 'Двойной Enter (пустые абзацы)',
-          detail: `Подряд идёт пустых абзацев: ${runLen}.`,
-          recommend: 'Оставьте не более одного пустого абзаца; для новой страницы используйте разрыв страницы.',
-          ref: 'СТУ 7.5–07–2021, п. 7.3.1',
-        });
-        runStart = -1; runLen = 0;
-      }
+      else flush(i);
     }
   }
 

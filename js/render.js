@@ -165,6 +165,7 @@
       if (wpx) img.style.width = wpx + 'px';
       else img.style.maxWidth = limit + 'px';
       if (hpx) img.style.height = hpx + 'px';
+      img.style.display = 'block';
       // якорь: Word размещает плавающий рисунок ниже — добавляем отступ сверху
       if (part.anchor && !floating && part.offV != null && part.offV > 6) img.style.marginTop = Math.round(part.offV) + 'px';
       if (floating) {
@@ -214,6 +215,7 @@
         sp.classList.add(LEVEL_CLASS[mk.level] || 'stu-mk-info');
         if (mk.punct) sp.classList.add('stu-mk-punct');
         if (mk.ai) sp.classList.add('stu-ai');
+        if (mk.id) sp.setAttribute('data-find', mk.id);
         if (/^[\u200B-\u200D\u2060\uFEFF\u00AD]+$/.test(slice)) sp.classList.add('stu-char-marker');
         container.appendChild(sp);
       }
@@ -254,7 +256,7 @@
       styleSpan(m, firstRun, blockIndex, -1, ctx);
       m.style.fontFamily = FONT_STACK;   // маркер рисуем обычным шрифтом, без «квадратиков»
       const mkLvl = ctx.markerMarks[blockIndex];
-      if (mkLvl) m.classList.add(LEVEL_CLASS[mkLvl]);
+      if (mkLvl) { m.classList.add(LEVEL_CLASS[mkLvl.level]); if (mkLvl.id) m.setAttribute('data-find', mkLvl.id); }
       container.appendChild(m);
       cursor.x += measure(marker + '\u00a0', firstRun);
     }
@@ -298,6 +300,7 @@
       if (p.jc === 'center') offset = Math.max(0, (textW - total) / 2);
       else if (p.jc === 'right' || p.jc === 'end') offset = Math.max(0, textW - total);
     }
+    ctx._defer = [];
     for (let s = 0; s < segs.length; s++) {
       const desired = offset + starts[s];
       const gap = desired - cursor.x;
@@ -308,6 +311,9 @@
       }
       for (const it of segs[s]) renderPart(container, it.run, it.part, blockIndex, it.ri, ctx, cursor);
     }
+    // плавающие рисунки выводим после текста абзаца (как в Word: текст, затем рисунок)
+    for (const part of ctx._defer) appendDrawing(container, part, ctx, blockIndex);
+    ctx._defer = null;
   }
 
   function segWidth(seg) {
@@ -348,7 +354,8 @@
     } else if (part.type === 'break') {
       container.appendChild(document.createElement('br')); cursor.x = 0;
     } else if (part.type === 'drawing') {
-      appendDrawing(container, part, ctx, blockIndex);
+      if (ctx._defer) ctx._defer.push(part);
+      else appendDrawing(container, part, ctx, blockIndex);
     }
   }
 
@@ -424,6 +431,7 @@
     if (ai) el.classList.add('stu-ai');
     el.classList.add('stu-marked');
     el.setAttribute('data-findings', (marks ? marks.length : 0) + (ai ? 1 : 0));
+    if (ctx.blockFind[blockIndex] != null) el.setAttribute('data-find', ctx.blockFind[blockIndex]);
   }
 
   function buildTableCellParagraph(p, blockIndex, ctx) {
@@ -584,16 +592,17 @@
   // ---------------------------------------------------------------- render
   function renderDocument(doc, roles, findings, viewer) {
     viewer.innerHTML = '';
-    const ctx = { doc, runMarks: {}, blockMarks: {}, charMarks: {}, aiBlock: {}, markerMarks: {}, roles, markers: computeMarkers(doc), tabStep: TW((doc.settings && doc.settings.defaultTabStop) || 708) };
+    const ctx = { doc, runMarks: {}, blockMarks: {}, charMarks: {}, aiBlock: {}, markerMarks: {}, blockFind: {}, roles, markers: computeMarkers(doc), tabStep: TW((doc.settings && doc.settings.defaultTabStop) || 708) };
     for (const f of findings) {
       if (f.blockIndex == null || f.pageLevel) continue;
+      if (ctx.blockFind[f.blockIndex] == null) ctx.blockFind[f.blockIndex] = f.id;
       if (f.chars && f.chars.length) {
         const m = ctx.charMarks[f.blockIndex] = ctx.charMarks[f.blockIndex] || {};
-        for (const c of f.chars) for (const rng of c.ranges) (m[c.runIndex] = m[c.runIndex] || []).push({ start: rng[0], end: rng[1], level: f.level, ai: !!f.ai, punct: f.category === 'punct' });
+        for (const c of f.chars) for (const rng of c.ranges) (m[c.runIndex] = m[c.runIndex] || []).push({ start: rng[0], end: rng[1], level: f.level, ai: !!f.ai, punct: f.category === 'punct', id: f.id });
       }
       if (f.isMarker) {
         const cur = ctx.markerMarks[f.blockIndex];
-        if (!cur || LEVEL_RANK[f.level] > LEVEL_RANK[cur]) ctx.markerMarks[f.blockIndex] = f.level;
+        if (!cur || LEVEL_RANK[f.level] > LEVEL_RANK[cur.level]) ctx.markerMarks[f.blockIndex] = { level: f.level, id: f.id };
         continue;
       }
       if (f.blockIndices && f.blockIndices.length) {
@@ -740,6 +749,18 @@
           for (const n of nodes) cur.flow.removeChild(n.node);
           cur = newPage(section);
           for (const n of nodes) cur.flow.appendChild(n.node);
+        }
+      }
+      // Заголовок не оставляем один внизу листа: переносим его вместе со следующим текстом.
+      if (nodes.length === 1 && (roles[firstIdx] && (roles[firstIdx].role === 'heading' || roles[firstIdx].role === 'structural'))) {
+        const nd = nodes[0].node;
+        const nxt = item.indices[0] + 1;
+        const nrole = roles[nxt] ? roles[nxt].role : null;
+        const bottom = nd.offsetTop + nd.offsetHeight;
+        if (cur.flow.childElementCount > 1 && nrole && nrole !== 'heading' && nrole !== 'structural' && (cur.textH - bottom) < 60) {
+          cur.flow.removeChild(nd);
+          cur = newPage(section);
+          cur.flow.appendChild(nd);
         }
       }
       for (const n of nodes) { pageForBlock[n.idx] = cur.index; blockEls[n.idx] = n.node; cur.blocks.push(n.idx); }

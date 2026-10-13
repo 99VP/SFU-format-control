@@ -85,7 +85,8 @@
     if (ch === 'o' || ch === '-') return '\u2013';
     if (ch === '\u2013' || ch === '\u2014') return '\u2013';
     if (/[\u2022\u25CF\u25AA\u25E6\u00B7\u25A0\u25AB\u25C6]/.test(ch)) return '\u2022';
-    if (/[\uE000-\uF8FF]/.test(ch)) return '\u25A1';   // значок Word (книжка и т.п.) — показываем рамкой
+    if (ch === '\uF02D' || ch === '\uF0FC') return '\u{1F4D6}';   // значок «книжка»
+    if (/[\uE000-\uF8FF]/.test(ch)) return '\u2022';
     return ch;
   }
   function formatLevel(lvlText, numId, counters) {
@@ -297,21 +298,30 @@
     }
     const cursor = { x: 0 };
     const marker = ctx.markers[blockIndex];
+    let listHang = 0;
+    if (marker && role === 'list' && p.numPr && ctx.doc.numbering) {
+      const lvl = ctx.doc.numbering.level(p.numPr.numId, p.numPr.ilvl);
+      if (lvl && lvl.ind && lvl.ind.hanging) listHang = TW(lvl.ind.hanging);
+    }
     if (marker) {
       const firstRun = (p.runs || [])[0] || { size: 14 };
       const m = document.createElement('span');
       m.className = 'stu-listmark';
       const mk = String(marker).replace(/\s+$/, '');
       m.style.whiteSpace = 'pre';
-      m.style.display = 'inline-block';
-      m.style.minWidth = '1.7em';
       m.textContent = mk + '\u00a0';
       styleSpan(m, firstRun, blockIndex, -1, ctx);
       m.style.fontFamily = FONT_STACK;   // маркер рисуем обычным шрифтом, без «квадратиков»
       const mkLvl = ctx.markerMarks[blockIndex];
       if (mkLvl) { m.classList.add(LEVEL_CLASS[mkLvl.level]); if (mkLvl.id) m.setAttribute('data-find', mkLvl.id); }
       container.appendChild(m);
-      cursor.x += measure(mk + '\u00a0', firstRun);
+      const mW = measure(mk + '\u00a0', firstRun);
+      cursor.x += mW;
+      // выравниваем текст на позиции отступа (как в Word: маркер в начале, текст на отступе)
+      if (listHang > 0) {
+        const gap = Math.max(0, listHang - mW);
+        if (gap > 0.5) { const sp = document.createElement('span'); sp.className = 'stu-tab'; sp.style.display = 'inline-block'; sp.style.width = gap + 'px'; container.appendChild(sp); cursor.x += gap; }
+      }
     }
     // Сегменты по табуляторам; позиции считаем абсолютно (как Word), затем
     // сдвигаем всю строку в соответствии с выравниванием абзаца.
@@ -466,6 +476,16 @@
     const needsPre = role === 'title' || /^\s/.test(p.text || '');
     el.style.whiteSpace = needsPre ? 'pre-wrap' : 'normal';
     styleParagraphText(el, p);
+    // Перечисления: маркер и текст ставим по отступам из нумерации (как в Word).
+    if (role === 'list' && p.numPr && ctx.doc.numbering) {
+      const lvl = ctx.doc.numbering.level(p.numPr.numId, p.numPr.ilvl);
+      if (lvl && lvl.ind) {
+        const li = lvl.ind;
+        if (li.left != null) el.style.marginLeft = TW(li.left) + 'px';
+        if (li.hanging) el.style.textIndent = (-TW(li.hanging)) + 'px';
+        else if (li.firstLine != null) el.style.textIndent = TW(li.firstLine) + 'px';
+      }
+    }
     const hasTabs = (p.tabs && p.tabs.length) || /\t/.test(p.text || '');
     // Центрирование/право без табуляторов отдаём браузеру (как Word), поэтому
     // text-align трогаем только при табуляторах, где позиции считаем сами.

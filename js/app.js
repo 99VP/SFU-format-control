@@ -637,6 +637,8 @@
   function init() {
     applyTheme(localStorage.getItem('stu-theme') || 'light');
     $('#theme-btn').addEventListener('click', toggleTheme);
+    const legendBtn = $('#legend-btn'), legendBox = $('#legend');
+    if (legendBtn && legendBox) legendBtn.addEventListener('click', () => { legendBox.style.display = legendBox.style.display === 'none' ? '' : 'none'; });
 
     // чипы типа документа
     const tc = $('#type-chips');

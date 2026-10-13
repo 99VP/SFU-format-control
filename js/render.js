@@ -490,7 +490,7 @@
       el.classList.add(LEVEL_CLASS[worst]);
     }
     if (ai) el.classList.add('stu-ai');
-    if (src) el.classList.add('stu-mk-src');
+    if (src) el.classList.add('stu-src-block');
     if (ind) el.classList.add('stu-indent-line');
     el.classList.add('stu-marked');
     el.setAttribute('data-findings', (marks ? marks.length : 0) + (ai ? 1 : 0));

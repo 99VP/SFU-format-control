@@ -280,7 +280,8 @@ html.vt-wave::view-transition-old(root) { animation: none; }
 .stu-mk-info { background: rgba(90,120,200,.14); box-shadow: inset 0 -2px 0 var(--info); }
 .stu-mk-punct { background: rgba(150,60,200,.22) !important; box-shadow: inset 0 -2px 0 #8a3fb0 !important; }
 .stu-space-mark { background: rgba(196,61,61,.5) !important; box-shadow: inset 0 -2px 0 var(--err) !important; white-space: pre; }
-.stu-mk-src { background: rgba(0,140,140,.18) !important; box-shadow: inset 0 -2px 0 #0a8f8f !important; }
+.stu-mk-src { background: transparent !important; box-shadow: inset 0 -2px 0 #0a8f8f !important; }
+.stu-src-block { box-shadow: inset 0 0 0 1px #0a8f8f; }
 .stu-indent-line { box-shadow: inset 3px 0 0 #d99a2b; }
 .stu-listmark.stu-mk-err, .stu-listmark.stu-mk-warn, .stu-listmark.stu-mk-info { border-radius: 3px; padding: 0 2px; }
 /* Замечания уровня листа: обводим весь лист или колонтитул */

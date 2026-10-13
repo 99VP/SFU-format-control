@@ -83,6 +83,28 @@
     if (over) for (const k in over) if (over[k] !== undefined) o[k] = over[k];
     return o;
   }
+  // Разбирает контейнер рамок (w:pBdr, w:tblBorders, w:tcBorders) в объект
+  // { сторона: { val, sz, color, space } }. keepNone=true сохраняет стороны
+  // с val="none" — это важно: рамка ячейки «none» перекрывает рамку таблицы
+  // (в Word такие линии приглушены).
+  function parseBorderSides(container, keepNone) {
+    const bo = {};
+    if (!container) return bo;
+    for (const side of ['top', 'left', 'bottom', 'right', 'start', 'end', 'between', 'bar', 'insideH', 'insideV']) {
+      const el = kid(container, side);
+      if (!el) continue;
+      const val = attr(el, 'val') || 'single';
+      if (val === 'none' || val === 'nil') { if (keepNone) bo[side] = { val: 'none' }; continue; }
+      bo[side] = {
+        val,
+        sz: attr(el, 'sz') != null ? +attr(el, 'sz') : null,
+        color: attr(el, 'color') || null,
+        space: attr(el, 'space') != null ? +attr(el, 'space') : null,
+      };
+    }
+    return bo;
+  }
+
   function parsePPr(pPr) {
     const o = {};
     if (!pPr) return o;
@@ -115,6 +137,13 @@
         val: attr(t, 'val') || 'left',
         leader: attr(t, 'leader') || 'none',
       })).filter((t) => t.pos != null).sort((a, b) => a.pos - b.pos);
+    }
+    // Рамки абзаца (w:pBdr). Нижняя рамка в Word выглядит как подчёркивание
+    // строки (титульные поля шаблона), поэтому её нужно сохранять.
+    const pbdr = kid(pPr, 'pBdr');
+    if (pbdr) {
+      const bo = parseBorderSides(pbdr, false);
+      if (Object.keys(bo).length) o.borders = bo;
     }
     const numPr = kid(pPr, 'numPr');
     if (numPr) {
@@ -156,7 +185,9 @@
       const isDefault = attr(st, 'default') === '1' || attr(st, 'default') === 'true';
       const rPr = parseRPr(kid(st, 'rPr'));
       const pPr = parsePPr(kid(st, 'pPr'));
-      styles[id] = { id, type, name, basedOn, isDefault, rPr, pPr };
+      const stTblPr = kid(st, 'tblPr');
+      const tblBorders = stTblPr ? parseBorderSides(kid(stTblPr, 'tblBorders'), true) : null;
+      styles[id] = { id, type, name, basedOn, isDefault, rPr, pPr, tblBorders };
       if (type === 'paragraph' && isDefault && !defaultParaStyle) defaultParaStyle = id;
     }
     // Дополняем шрифт из темы, если он не задан явно в стиле.
@@ -398,6 +429,7 @@
       sectPr: pPr.sectPr || null,
       keepNext: !!(pPr.keepNext || stPPr.keepNext),
       tabs: pPr.tabs || stPPr.tabs || [],
+      borders: pPr.borders || stPPr.borders || null,
     };
     // нормализуем undефайны
     for (const k in effPPr.ind) if (effPPr.ind[k] === undefined) effPPr.ind[k] = null;
@@ -417,6 +449,7 @@
       pageBreakBefore: effPPr.pageBreakBefore,
       sectPr: effPPr.sectPr,
       tabs: effPPr.tabs,
+      borders: effPPr.borders,
       fieldText,
       markRPr,
       hasDrawing: runs.some((r) => r.hasDrawing),
@@ -433,16 +466,25 @@
         const tcPr = kid(tc, 'tcPr');
         const gridSpan = tcPr ? +(attr(kid(tcPr, 'gridSpan'), 'val') || 1) : 1;
         const paras = kids(tc, 'p').map((p) => parseParagraph(p, ctx));
-        cells.push({ paras, gridSpan, tcPr });
+        const cellBorders = tcPr ? parseBorderSides(kid(tcPr, 'tcBorders'), true) : {};
+        cells.push({ paras, gridSpan, tcPr, borders: cellBorders });
       }
       rows.push({ cells });
     }
     // поиск объединений по вертикали пропускаем – для проверок не критично
     const tblPr = kid(tbl, 'tblPr');
-    const borders = kid(tblPr, 'tblBorders');
-    const hasBorders = !!(borders && ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].some((side) => {
-      const b = kid(borders, side); return b && attr(b, 'val') !== 'none' && attr(b, 'val') !== 'nil';
-    }));
+    // Рамки таблицы: сначала стиль таблицы (w:tblStyle), затем прямые w:tblBorders.
+    let borders = {};
+    const tblStyle = attr(kid(tblPr, 'tblStyle'), 'val');
+    if (tblStyle && ctx && ctx.styles) {
+      for (const s of resolveStyleChain(tblStyle, ctx.styles).reverse()) {
+        if (s.tblBorders) borders = Object.assign(borders, s.tblBorders);
+      }
+    }
+    borders = Object.assign(borders, parseBorderSides(kid(tblPr, 'tblBorders'), true));
+    const visible = (bo) => Object.keys(bo || {}).some((k) => bo[k] && bo[k].val !== 'none' && bo[k].val !== 'nil');
+    let hasBorders = visible(borders);
+    if (!hasBorders) for (const r of rows) for (const c of r.cells) if (visible(c.borders)) hasBorders = true;
     const tblW = kid(tblPr, 'tblW');
     const tblGrid = kid(tbl, 'tblGrid');
     const grid = tblGrid ? kids(tblGrid, 'gridCol').map((c) => +attr(c, 'w') || 0) : [];
@@ -450,6 +492,7 @@
       kind: 'table',
       rows,
       hasBorders,
+      borders,
       grid,
       width: tblW ? { w: attr(tblW, 'w'), type: attr(tblW, 'type') } : null,
       text: rows.map((r) => r.cells.map((c) => c.paras.map((p) => p.text).join(' ')).join('\t')).join('\n'),
@@ -468,28 +511,78 @@
   }
 
   // ------------------------------------------------------------------ footers/headers
-  function parseHeaderFooter(xml, idMap) {
+  // Возвращает абзацы с реальным форматированием прогонов (шрифт, размер,
+  // полужирный, подчёркивание) и признаком поля номера страницы. Нужно и для
+  // отрисовки колонтитула, и для проверок «крупный/полужирный колонтитул».
+  function parseHeaderFooter(xml) {
     if (!xml) return null;
     const root = xml.documentElement;
+    const isPageInstr = (s) => /(^|\s)PAGE(\s|$)/i.test(s || '') && !/NUMPAGES|SECTIONPAGES/i.test(s || '');
     const paras = kids(root, 'p').map((p) => {
       const pPr = parsePPr(kid(p, 'pPr'));
-      const runs = kids(p, 'r').map(parseRun);
-      let text = '';
+      const allRaw = [];
+      (function collect(node) {
+        for (const c of Array.from(node.childNodes)) {
+          if (c.nodeType !== 1) continue;
+          if (c.localName === 'r') allRaw.push(parseRun(c));
+          else if (c.localName === 'pPr') continue;
+          else collect(c);
+        }
+      })(p);
+      // Простые поля w:fldSimple (например, PAGE).
       let hasPageField = false;
-      for (const r of runs) text += r.text;
-      // поля PAGE / NUMPAGES
-      for (const fc of root.getElementsByTagName('w:fldChar')) {
-        // nothing
-      }
-      const instrNodes = Array.prototype.slice.call(root.getElementsByTagName('w:instrText'));
-      for (const it of instrNodes) if (/PAGE/i.test(it.textContent)) hasPageField = true;
-      const fldSimple = Array.prototype.slice.call(root.getElementsByTagName('w:fldSimple'));
-      for (const fs of fldSimple) {
+      const simpleTexts = new Set();
+      for (const fs of Array.prototype.slice.call(p.getElementsByTagName('w:fldSimple'))) {
         const instr = fs.getAttributeNS(NS.w, 'instr') || fs.getAttribute('w:instr') || '';
-        if (/PAGE/i.test(instr)) hasPageField = true;
+        if (isPageInstr(instr)) {
+          hasPageField = true;
+          for (const t of Array.prototype.slice.call(fs.getElementsByTagName('w:t'))) simpleTexts.add(t.textContent);
+        }
       }
-      const rPr = runs[0] ? runs[0].eff : {};
-      return { jc: pPr.jc || null, ind: pPr.ind || {}, text, hasPageField, font: (runs[0] && runs[0].font) || null, size: (runs[0] && runs[0].size) || null };
+      // Сложные поля w:fldChar: begin → instrText PAGE → separate → результат → end.
+      let sawPage = false, inResult = false;
+      const resultRun = new Array(allRaw.length).fill(false);
+      for (let ri = 0; ri < allRaw.length; ri++) {
+        for (const part of allRaw[ri].parts || []) {
+          if (part.type === 'fldChar') {
+            if (part.ftype === 'begin') { sawPage = false; inResult = false; }
+            else if (part.ftype === 'separate') inResult = sawPage;
+            else if (part.ftype === 'end') { inResult = false; sawPage = false; }
+          } else if (part.type === 'instrText') {
+            if (isPageInstr(part.text)) { sawPage = true; hasPageField = true; }
+          }
+        }
+        if (inResult) resultRun[ri] = true;
+      }
+      const runs = allRaw.map((r, ri) => {
+        let isPageResult = resultRun[ri];
+        // fldSimple: результат — прогон с тем же текстом, что внутри поля.
+        if (!isPageResult && simpleTexts.size && r.text && simpleTexts.has(r.text)) isPageResult = true;
+        return {
+          text: r.text || '',
+          font: r.rPr.font || null,
+          size: r.rPr.size != null ? r.rPr.size : null,
+          bold: !!r.rPr.bold,
+          italic: !!r.rPr.italic,
+          underline: !!r.rPr.underline,
+          instr: r.fieldInstr || '',
+          isPageResult,
+        };
+      });
+      let text = '';
+      for (const r of runs) text += r.text;
+      const firstText = runs.find((r) => (r.text || '').trim()) || runs[0] || {};
+      return {
+        jc: pPr.jc || null,
+        ind: pPr.ind || {},
+        spacing: pPr.spacing || null,
+        text,
+        hasPageField,
+        font: firstText.font || null,
+        size: firstText.size != null ? firstText.size : null,
+        bold: !!firstText.bold,
+        runs,
+      };
     });
     return { paras, text: paras.map((p) => p.text).join('\n'), hasPageField: paras.some((p) => p.hasPageField) };
   }
@@ -497,7 +590,10 @@
   // ------------------------------------------------------------------ main parse
   function parse(arrayBuffer) {
     const u8 = new Uint8Array(arrayBuffer);
-    const files = global.fflate.unzipSync(u8, { filter: (f) => /^word\/|^docProps\//.test(f.name) });
+    // Картинки бывают и в word/media/, и в корневой media/ (некоторые
+    // генераторы, например ScanOval, кладут их туда), поэтому корень media/
+    // тоже читаем.
+    const files = global.fflate.unzipSync(u8, { filter: (f) => /^word\/|^docProps\/|(?:^|\/)media\//.test(f.name) });
     const get = (name) => files[name] ? parseXML(files[name]) : null;
     const getBytes = (name) => files[name] || null;
 
@@ -606,13 +702,14 @@
       if (t) props.title = t.textContent;
     }
 
-    // Медиафайлы (картинки)
+    // Медиафайлы (картинки): и word/media/, и корневая media/.
     const media = {};
     for (const name in files) {
-      if (/^word\/media\//.test(name)) {
-        const rel = name.replace(/^word\//, '');
-        try { media[rel] = 'data:' + mimeOf(name) + ';base64,' + bytesToBase64(files[name]); } catch (e) { }
-      }
+      if (name.charAt(name.length - 1) === '/') continue;   // служебная папка
+      if (!/(?:^|\/)media\//.test(name)) continue;
+      const key = mediaKey(name);
+      if (!key) continue;
+      try { media[key] = 'data:' + mimeOf(name) + ';base64,' + bytesToBase64(files[name]); } catch (e) { }
     }
 
     return {
@@ -628,6 +725,31 @@
       rels: relsMap,
       media,
     };
+  }
+
+  // Приводит путь к картинке из relations к ключу в media-карте
+  // («/media/image1.png», «../media/image1.png», «word/media/image1.png» →
+  // «media/image1.png»).
+  function mediaKey(p) {
+    if (!p) return null;
+    const t0 = String(p).replace(/\\/g, '/').replace(/^\/+/, '');
+    const parts = [];
+    for (const seg of t0.split('/')) {
+      if (seg === '' || seg === '.') continue;
+      if (seg === '..') { parts.pop(); continue; }
+      parts.push(seg);
+    }
+    const t = parts.join('/');
+    const i = t.indexOf('media/');
+    return i >= 0 ? t.slice(i) : t;
+  }
+  // Ищет картинку по r:embed / r:id среди медиафайлов.
+  function resolveMedia(rels, media, embed) {
+    if (!embed || !rels || !media) return null;
+    const target = rels[embed];
+    if (!target) return null;
+    const key = mediaKey(target);
+    return (key && media[key]) || null;
   }
 
   function mimeOf(name) {
@@ -649,5 +771,5 @@
     return btoa(bin);
   }
 
-  global.STUDocx = { parse, helpers: { mm, pt, TWIP_PER_MM, kids, kid, attr } };
+  global.STUDocx = { parse, helpers: { mm, pt, TWIP_PER_MM, kids, kid, attr, mediaKey, resolveMedia } };
 })(window);

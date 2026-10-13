@@ -145,8 +145,7 @@
   function appendDrawing(container, part, ctx, blockIndex) {
     let src = null;
     if (part.embed && ctx.doc.rels && ctx.doc.media) {
-      const rel = ctx.doc.rels[part.embed];
-      if (rel) { src = ctx.doc.media['media/' + rel.split('/').pop()] || ctx.doc.media[rel]; }
+      src = global.STUDocx.helpers.resolveMedia(ctx.doc.rels, ctx.doc.media, part.embed);
     }
     // Плавающий рисунок на титульном листе выводим вне потока, иначе он
     // раздвигает строку и последняя строка титула уезжает на другой лист.
@@ -465,6 +464,14 @@
     const needsPre = role === 'title' || /^\s/.test(p.text || '');
     el.style.whiteSpace = needsPre ? 'pre-wrap' : 'normal';
     styleParagraphText(el, p);
+    // Нижняя рамка абзаца (w:pBdr) в Word выглядит как подчёркивание строки.
+    const bd = p.borders && p.borders.bottom;
+    if (bd) {
+      const wpx = Math.max(1, ((bd.sz || 6) / 8) * (96 / 72));
+      const col = /^[0-9a-fA-F]{6}$/.test(bd.color || '') ? '#' + bd.color : '#111';
+      el.style.borderBottom = wpx + 'px solid ' + col;
+      el.style.paddingBottom = '1px';
+    }
     const hasTabs = (p.tabs && p.tabs.length) || /\t/.test(p.text || '');
     // Центрирование/право без табуляторов отдаём браузеру (как Word), поэтому
     // text-align трогаем только при табуляторах, где позиции считаем сами.
@@ -507,6 +514,15 @@
     return el;
   }
 
+  const MUTED_BORDER = '1px solid rgba(0,0,0,.28)';
+  function borderCssFor(b) {
+    const w = Math.max(1, ((b.sz || 4) / 8) * (96 / 72));
+    const col = /^[0-9a-fA-F]{6}$/.test(b.color || '') ? '#' + b.color : '#333';
+    const style = /dash|dot/i.test(b.val || '') ? 'dashed' : (b.val === 'double' ? 'double' : 'solid');
+    return w + 'px ' + style + ' ' + col;
+  }
+  function capSide(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
   function buildTable(tbl, blockIndex, ctx) {
     const table = document.createElement('table');
     table.className = 'stu-table';
@@ -519,11 +535,36 @@
       table.appendChild(cg);
       table.style.tableLayout = 'fixed';
     }
-    tbl.rows.forEach((row) => {
+    // Рамки как в Word: учитываем рамки таблицы (в т.ч. из стиля) и перекрытие
+    // рамок ячеек. Где линия в Word приглушена/отключена — рисуем бледно,
+    // где задана — как задана.
+    const tB = tbl.borders || {};
+    const hasAnyInfo = Object.keys(tB).length > 0 ||
+      tbl.rows.some((r) => r.cells.some((c) => c.borders && Object.keys(c.borders).length));
+    const R = tbl.rows.length;
+    tbl.rows.forEach((row, ri) => {
       const tr = document.createElement('tr');
-      row.cells.forEach((cell) => {
+      const C = row.cells.length;
+      row.cells.forEach((cell, ci) => {
         const td = document.createElement('td');
         if (cell.gridSpan > 1) td.colSpan = cell.gridSpan;
+        const cB = cell.borders || {};
+        const pick = (side, internal) => {
+          if (cB[side] !== undefined) return cB[side];
+          if (tB[side] !== undefined) return tB[side];
+          if (internal) { const ins = (side === 'top' || side === 'bottom') ? tB.insideH : tB.insideV; if (ins !== undefined) return ins; }
+          return undefined;
+        };
+        const setSide = (side, internal) => {
+          const b = pick(side, internal);
+          if (b && b.val && b.val !== 'none' && b.val !== 'nil') td.style['border' + capSide(side)] = borderCssFor(b);
+          else if ((b && b.val === 'none') || !hasAnyInfo) td.style['border' + capSide(side)] = MUTED_BORDER;
+          else td.style['border' + capSide(side)] = 'none';
+        };
+        setSide('top', ri > 0);
+        setSide('bottom', ri < R - 1);
+        setSide('left', ci > 0);
+        setSide('right', ci < C - 1);
         cell.paras.forEach((p) => td.appendChild(buildTableCellParagraph(p, blockIndex, ctx)));
         tr.appendChild(td);
       });
@@ -695,6 +736,12 @@
     }
 
     const forcedPageStarts = global.STURules.computeForcedPageStarts(doc);
+    // Титульный лист — отдельная страница, даже если в файле нет разрыва.
+    if (roles) {
+      let lastTitle = -1;
+      for (let i = 0; i < doc.blocks.length; i++) { if (roles[i] && roles[i].role === 'title') lastTitle = i; else break; }
+      if (lastTitle >= 0 && lastTitle + 1 < doc.blocks.length) forcedPageStarts.add(lastTitle + 1);
+    }
     const items = makeItems(doc, forcedPageStarts, roles);
     // С новой страницы начинаем только структурные элементы (ВВЕДЕНИЕ, СОДЕРЖАНИЕ…),
     // но только если в файле уже нет разрыва рядом (иначе как в Word).
@@ -739,7 +786,8 @@
       flow.style.height = MM(g.hmm - g.mt - g.mb) + 'px';
       sheet.appendChild(flow);
 
-      // колонтитул
+      // колонтитул (нижний): рисуем его реальным содержимым и форматом,
+      // чтобы большой/полужирный колонтитул был виден полностью, а не обрезался.
       const pageIndex = pages.length;
       const foot = footerForPage(section, pageIndex);
       let fdiv = null;
@@ -748,17 +796,41 @@
         fdiv.className = 'stu-footer';
         fdiv.style.left = MM(g.ml) + 'px';
         fdiv.style.width = MM(g.wmm - g.ml - g.mr) + 'px';
-        fdiv.style.bottom = MM(Math.max(4, (g.mb - 8))) + 'px';
-        if (foot.hasPageField) {
-          fdiv.textContent = String(pageIndex + 1);
-          fdiv.style.fontFamily = FONT_STACK;
-          fdiv.style.fontSize = PT(14) + 'px';
-          const p0 = (foot.paras || [])[0];
-          fdiv.style.textAlign = (p0 && p0.jc) ? 'center' : 'center';
-        } else {
-          fdiv.textContent = (foot.text || '').trim();
+        const footDist = section && section.margin && section.margin.footer != null ? twMM(section.margin.footer) : 10;
+        fdiv.style.bottom = MM(Math.max(2, footDist)) + 'px';
+        const lines = (foot.paras || []).filter((p) => p.hasPageField || (p.text || '').trim());
+        if (lines.length) {
+          for (const p of lines) {
+            const line = document.createElement('div');
+            if (p.jc === 'left') line.style.textAlign = 'left';
+            else if (p.jc === 'right' || p.jc === 'end') line.style.textAlign = 'right';
+            else line.style.textAlign = 'center';
+            line.style.lineHeight = '1.15';
+            let filled = false;
+            for (const r of (p.runs || [])) {
+              if (!r.text) continue;
+              const sp = document.createElement('span');
+              sp.textContent = (p.hasPageField && r.isPageResult) ? String(pageIndex + 1) : r.text;
+              if (r.font) sp.style.fontFamily = '"' + r.font + '", ' + FONT_STACK;
+              if (r.size) sp.style.fontSize = PT(r.size) + 'px';
+              if (r.bold) sp.style.fontWeight = '700';
+              if (r.italic) sp.style.fontStyle = 'italic';
+              if (r.underline) sp.style.textDecoration = 'underline';
+              line.appendChild(sp);
+              filled = true;
+            }
+            if (!filled && p.hasPageField) {
+              const sp = document.createElement('span');
+              sp.textContent = String(pageIndex + 1);
+              sp.style.fontFamily = FONT_STACK;
+              sp.style.fontSize = PT(p.size || 14) + 'px';
+              line.appendChild(sp);
+            }
+            if ((line.textContent || '').trim() || p.hasPageField) fdiv.appendChild(line);
+          }
         }
-        sheet.appendChild(fdiv);
+        if (fdiv.childElementCount) sheet.appendChild(fdiv);
+        else fdiv = null;
       }
 
       sheetRow.appendChild(vrule);
@@ -872,27 +944,30 @@
         targets = pages.filter((p) => p.section === sect);
       }
       if (f.category === 'pagenum') {
-        if (f.blockIndex === 0) targets = [pages[0]];
-        else { const wp = pages.find((p) => p.footerEl); targets = wp ? [wp] : [pages[0]]; }
+        const target = (f.blockIndex === 0) ? pages[0] : (pages.find((p) => p.footerEl) || pages[0]);
+        targets = [target];
       }
       if (!targets.length) targets = [pages[0]];
       f.page = targets[0].index;
       let el = targets[0].sheet;
       if (f.category === 'pagenum') {
-        const withFooter = targets[0].footerEl;
-        if (withFooter) el = withFooter;
-        else {
-          // на титульном листе колонтитула нет: показываем место, где стоял бы номер
-          const mark = document.createElement('div');
-          const g0 = targets[0].geom;
-          mark.className = 'stu-footer stu-num-mark';
-          mark.style.left = MM(g0.ml) + 'px';
-          mark.style.width = MM(g0.wmm - g0.ml - g0.mr) + 'px';
-          mark.style.bottom = MM(Math.max(4, (g0.mb - 8))) + 'px';
-          mark.textContent = String(targets[0].index + 1);
-          targets[0].sheet.appendChild(mark);
-          el = mark;
+        const target = targets[0];
+        const g0 = target.geom;
+        const sect0 = target.section;
+        const fd = sect0 && sect0.margin && sect0.margin.footer != null ? twMM(sect0.margin.footer) : 10;
+        let band = target.sheet.querySelector('.stu-footer-band');
+        if (!band) {
+          band = document.createElement('div');
+          band.className = 'stu-footer-band';
+          band.style.left = MM(g0.ml) + 'px';
+          band.style.width = MM(g0.wmm - g0.ml - g0.mr) + 'px';
+          band.style.bottom = MM(Math.max(2, fd - 5)) + 'px';
+          const lab = document.createElement('span');
+          lab.className = 'stu-footer-band-label'; lab.textContent = 'колонтитул';
+          band.appendChild(lab);
+          target.sheet.appendChild(band);
         }
+        el = band;
       }
       f.element = el;
       const cls = f.level === 'error' ? 'stu-page-err' : (f.level === 'warning' ? 'stu-page-warn' : 'stu-page-info');

@@ -123,6 +123,28 @@
   }
 
   // ------------------------------------------------------------------ classify
+  // Первая строка основной части: структурный заголовок («РЕФЕРАТ»,
+  // «СОДЕРЖАНИЕ»…) или нумерованный раздел («1 Цель и условия работы»).
+  // Это надёжный признак конца титульного листа, даже если в файле нет
+  // явного разрыва страницы после титула (так делают некоторые редакторы).
+  function firstBodyStart(blocks) {
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i];
+      if (!b || b.kind !== 'p') continue;
+      const raw = b.text || '';
+      const t = normText(raw);
+      if (!t) continue;
+      const upper = t.toUpperCase().replace(/[.:]+$/, '');
+      if (/^(РЕФЕРАТ|АННОТАЦИЯ|СОДЕРЖАНИЕ|ВВЕДЕНИЕ|ЗАКЛЮЧЕНИЕ|СПИСОК|ПЕРЕЧЕНЬ|ПРИЛОЖЕНИЕ)(?![А-ЯЁа-яё])/.test(upper)) return i;
+      if (/\t/.test(raw) || /\d\s*$/.test(t)) continue;
+      // Нумерованный заголовок («1 Цель…»), только если он реально похож на
+      // заголовок (полужирный или стиль с уровнем), а не «2026 г.» на титуле.
+      if (/^\d+(?:\.\d+)*\s+\S/.test(t) && t.length < 200 &&
+        !/^\d+(?:\.\d+)*\s+(?:г\.|год|году|мм|см|м|с\.)(?:\s|$)/i.test(t) &&
+        (isBoldPara(b) || b.outlineLvl != null)) return i;
+    }
+    return null;
+  }
   function computeTitleEnd(doc, forcedPageStarts) {
     const blocks = doc.blocks || [];
     // Титульный лист это одна страница: ориентируемся на первый разрыв страницы.
@@ -136,6 +158,10 @@
       if (/^(РЕФЕРАТ|АННОТАЦИЯ|СОДЕРЖАНИЕ|ВВЕДЕНИЕ)$/.test(t)) { structStart = i; break; }
     }
     if (structStart != null && structStart >= 8) end = (end == null ? structStart : Math.min(end, structStart));
+    // Даже если в файле несколько разрывов страниц, титул не может тянуться
+    // до первого из них, когда признак основной части виден раньше.
+    const bodyStart = firstBodyStart(blocks);
+    if (bodyStart != null && bodyStart > 0) end = (end == null ? bodyStart : Math.min(end, bodyStart));
     if (end == null) {
       // разрыва нет: определяем титул по содержимому первых строк
       const MARK = /СИБИРСКИЙ ФЕДЕРАЛЬНЫЙ|МИНИСТЕРСТВ|ФЕДЕРАЛЬНОЕ ГОСУДАРСТВЕННОЕ|ИНСТИТУТ|КАФЕДРА|УТВЕРЖДАЮ|КРАСНОЯРСК|РУКОВОДИТЕЛЬ|СТУДЕНТ|ПОДПИСЬ|ГРУПП|20\d\d/;
@@ -372,18 +398,6 @@
         });
       } else {
         indentValues.push(effectiveFirst);
-      }
-      // интервала до и после абзаца быть не должно
-      const spB = (b.spacing && b.spacing.before) || 0;
-      const spA = (b.spacing && b.spacing.after) || 0;
-      if (spB > 0 || spA > 0) {
-        add({
-          category: 'font', level: 'warning', blockIndex: i,
-          title: 'Интервал до/после абзаца',
-          detail: 'У абзаца задан интервал до или после (в Word «добавить»).',
-          recommend: 'Уберите интервалы до и после абзаца (0 пт).',
-          ref: 'СТУ 7.5–07–2021, п. 7.1.1',
-        });
       }
       // межстрочный интервал
       let factor = null;
@@ -769,6 +783,7 @@
 
     // ================================================================ Таблицы
     checkTables(doc, blocks, roles, add);
+    checkParagraphSpacing(blocks, roles, add);
     checkBlankLines(blocks, roles, add);
     checkDoubleEnter(blocks, titleEnd, add);
     checkListNumbering(blocks, roles, add);
@@ -1078,6 +1093,33 @@
     }
   }
 
+  // Интервалы до/после абзаца (Word: «Удалить интервал перед/после абзаца»)
+  // не допускаются ни у какого абзаца — ни у текста, ни у рисунков, подписей,
+  // заголовков. Уровень — ошибка.
+  function checkParagraphSpacing(blocks, roles, add) {
+    const SKIP = new Set(['title', 'empty', 'table']);
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i];
+      if (b.kind !== 'p' || b.isEmpty) continue;
+      const r = roles[i]; if (!r) continue;
+      if (SKIP.has(r.role)) continue;
+      const spB = (b.spacing && b.spacing.before) || 0;
+      const spA = (b.spacing && b.spacing.after) || 0;
+      if (spB > 0 || spA > 0) {
+        const parts = [];
+        if (spB > 0) parts.push('до ' + (spB / 20).toFixed(1).replace('.', ',') + ' пт');
+        if (spA > 0) parts.push('после ' + (spA / 20).toFixed(1).replace('.', ',') + ' пт');
+        add({
+          category: 'font', level: 'error', blockIndex: i,
+          title: 'Интервал до/после абзаца',
+          detail: `У абзаца задан интервал ${parts.join(' и ')} (в Word «добавить»).`,
+          recommend: 'Уберите интервалы до и после абзаца (0 пт).',
+          ref: 'СТУ 7.5–07–2021, п. 7.1.1',
+        });
+      }
+    }
+  }
+
   // --------------------------------------------------------------- page numbers
   function checkPageNumbers(doc, add) {
     // берём колонтитулы секции, где больше всего текста
@@ -1172,9 +1214,13 @@
         const m = t.match(/^Таблица\s+([А-ЯA-Z0-9.\-]+)\s*(–|-|—)\s*(.*)$/i);
         const fl = cap.ind ? cap.ind.firstLine : null;
         if (fl) add({ category: 'table', level: 'error', blockIndex: capIndex, title: 'Подпись таблицы с абзацным отступом', detail: `Подпись «${t}» начинается с абзацного отступа.`, recommend: 'Слово «Таблица» и подпись размещайте слева, без абзацного отступа.', ref: 'СТУ 7.5–07–2021, п. 7.7.3' });
-        if (m && m[2] === '-') {
-          const rawC = cap.text || ''; const dm = rawC.match(/\s[-]\s/); const di = dm ? dm.index + dm[0].indexOf('-') : -1;
-          add({ category: 'table', level: 'warning', blockIndex: capIndex, chars: di >= 0 ? rangeAt(cap, di, di + 1) : undefined, title: 'Тире в подписи таблицы', detail: 'В подписи использован дефис вместо тире.', recommend: 'Номер и наименование таблицы разделяйте тире.', ref: 'СТУ 7.5–07–2021, п. 7.7.3' });
+        if (m && m[2] !== '–') {
+          const rawC = cap.text || '';
+          const mRawC = rawC.match(/Таблица\s+\S+\s*[-–—]\s*/i);
+          let di = -1;
+          if (mRawC) { const rel = mRawC[0].search(/[-–—]/); if (rel >= 0) di = mRawC.index + rel; }
+          const whatC = m[2] === '-' ? 'дефис' : 'длинное тире';
+          add({ category: 'table', level: 'warning', blockIndex: capIndex, chars: di >= 0 ? rangeAt(cap, di, di + 1) : undefined, title: 'Тире в подписи таблицы', detail: `В подписи использовано ${whatC} вместо тире «–».`, recommend: 'Номер и наименование таблицы разделяйте тире «–» (короткое), не дефисом и не длинным тире.', ref: 'СТУ 7.5–07–2021, п. 7.7.3' });
         }
         if (/\.[\s]*$/.test(t)) add({ category: 'table', level: 'error', blockIndex: capIndex, title: 'Точка в конце подписи таблицы', detail: `Подпись «${t}» заканчивается точкой.`, recommend: 'Точку после наименования таблицы не ставят.', ref: 'СТУ 7.5–07–2021, п. 7.7.3' });
         const capRuns = (cap.runs || []).filter((x) => normText(x.text));
@@ -1258,6 +1304,15 @@
         recommend: 'Под иллюстрацией по центру поместите слово «Рисунок», его номер и наименование (Times New Roman 14).',
         ref: 'СТУ 7.5–07–2021, п. 7.8.1, 7.8.3',
       });
+      // Рисунок должен стоять по центру текста.
+      const cleanImg2 = normText((b.text || '').replace(/\uFFFC/g, ''));
+      if (!cleanImg2 && b.jc !== 'center') add({
+        category: 'figure', level: 'warning', blockIndex: i,
+        title: 'Рисунок не по центру',
+        detail: 'Изображение выровнено не по центру.',
+        recommend: 'Располагайте рисунок по центру текста.',
+        ref: 'СТУ 7.5–07–2021, п. 7.8.1',
+      });
       // Размер изображения (хорошая видимость и читаемость)
       for (const r of b.runs || []) for (const p of (r.parts || [])) {
         if (p.type === 'drawing' && p.cx) {
@@ -1278,12 +1333,15 @@
       const b = blocks[i];
       const t = normText(b.text).replace(/\uFFFC/g, '').trim();
       const m = t.match(/^Рисунок\s+([А-ЯA-Z0-9.\-]+)\s*(–|-|—)\s*(.*)$/i);
-      if (m && m[2] === '-') {
+      if (m && m[2] !== '–') {
+        // Нужен именно средний знак — тире «–». Дефис «-» и длинное тире «—»
+        // в подписи рисунка — ошибка.
         const rawAll = b.text || '';
         const mRaw = rawAll.match(/Рисунок\s+\S+\s*[-–—]\s*/i);
         let di = -1;
         if (mRaw) { const rel = mRaw[0].search(/[-–—]/); if (rel >= 0) di = mRaw.index + rel; }
-        add({ category: 'figure', level: 'warning', blockIndex: i, chars: di >= 0 ? rangeAt(b, di, di + 1) : undefined, title: 'Тире в подписи рисунка', detail: 'В подписи использован дефис вместо тире.', recommend: 'Номер и наименование рисунка разделяйте тире «–».', ref: 'СТУ 7.5–07–2021, п. 7.8.3' });
+        const what = m[2] === '-' ? 'дефис' : 'длинное тире';
+        add({ category: 'figure', level: 'warning', blockIndex: i, chars: di >= 0 ? rangeAt(b, di, di + 1) : undefined, title: 'Тире в подписи рисунка', detail: `В подписи использовано ${what} вместо тире «–».`, recommend: 'Номер и наименование рисунка разделяйте тире «–» (короткое), не дефисом и не длинным тире.', ref: 'СТУ 7.5–07–2021, п. 7.8.3' });
       }
       if (b.jc !== 'center') add({ category: 'figure', level: 'error', blockIndex: i, title: 'Подпись рисунка не по центру', detail: `Подпись «${t}» выровнена не по центру.`, recommend: 'Слово «Рисунок», номер и наименование печатайте по центру.', ref: 'СТУ 7.5–07–2021, п. 7.8.3' });
       const runs = (b.runs || []).filter((x) => normText(x.text));
@@ -1514,12 +1572,14 @@
       const b = blocks[i]; if (b.kind !== 'table') continue;
       if (roles[i] && roles[i].role === 'title') continue;
       const byKey = {};
+      let emDash = 0;
       for (const row of b.rows) for (const cell of row.cells) for (const p of cell.paras) {
         const text = p.text || '';
         for (let ci = 0; ci < text.length; ci++) {
           const ch = text[ci]; const info = SUSPICIOUS_CHARS[ch]; if (!info) continue;
           const e = byKey[ch] || (byKey[ch] = { info, count: 0 }); e.count++;
         }
+        emDash += (text.match(/\u2014/g) || []).length;
       }
       for (const key in byKey) {
         const e = byKey[key];
@@ -1531,6 +1591,14 @@
           ref: 'СТУ 7.5–07–2021, п. 7.3.1',
         });
       }
+      // Длинное тире в таблице — тоже ошибка набора.
+      if (emDash) add({
+        category: 'ai', level: 'info', ai: true, blockIndex: i,
+        title: 'Использовано длинное тире',
+        detail: `В таблице длинное тире встречается ${emDash} раз(а). Обычно так не пишут вручную.`,
+        recommend: 'Используйте короткое тире «–»; в диапазонах чисел без пробелов.',
+        ref: 'Правила русской типографики',
+      });
     }
   }
 
@@ -1899,14 +1967,46 @@
     }
   }
 
-  // Верхний колонтитул.
+  // Верхний колонтитул и оформление колонтитулов (в т.ч. крупный/полужирный).
   function checkHeaders(doc, add) {
+    const seen = new Set();
+    const once = (key, make) => { if (seen.has(key)) return; seen.add(key); add(make()); };
     for (const s of doc.sections) {
       const h = s.headers || {};
       for (const k in h) {
         const hf = h[k]; if (!hf) continue;
-        if (hf.hasPageField) add({ category: 'pagenum', level: 'warning', blockIndex: null, pageLevel: true, title: 'Номер страницы в верхнем колонтитуле', detail: 'Номер страницы расположен в верхнем колонтитуле.', recommend: 'Номер страницы ставят внизу по центру.', ref: 'СТУ 7.5–07–2021, п. 7.2.1' });
-        else if ((hf.text || '').trim()) add({ category: 'page', level: 'info', blockIndex: null, pageLevel: true, title: 'Верхний колонтитул содержит текст', detail: `«${(hf.text || '').trim().slice(0, 60)}».`, recommend: 'Стандарт не предусматривает текст в верхнем колонтитуле.', ref: 'СТУ 7.5–07–2021, п. 7.2' });
+        if (hf.hasPageField) once('pagenum-top', () => ({ category: 'pagenum', level: 'warning', blockIndex: null, pageLevel: true, title: 'Номер страницы в верхнем колонтитуле', detail: 'Номер страницы расположен в верхнем колонтитуле.', recommend: 'Номер страницы ставят внизу по центру.', ref: 'СТУ 7.5–07–2021, п. 7.2.1' }));
+        else if ((hf.text || '').trim()) once('header-text', () => ({ category: 'page', level: 'info', blockIndex: null, pageLevel: true, title: 'Верхний колонтитул содержит текст', detail: `«${(hf.text || '').trim().slice(0, 60)}».`, recommend: 'Стандарт не предусматривает текст в верхнем колонтитуле.', ref: 'СТУ 7.5–07–2021, п. 7.2' }));
+      }
+    }
+    // Единый вид колонтитулов по документу + недопустимо крупный/полужирный.
+    for (const s of doc.sections) {
+      for (const zone of ['headers', 'footers']) {
+        const hfMap = s[zone] || {};
+        for (const k in hfMap) {
+          const hf = hfMap[k]; if (!hf) continue;
+          const zoneName = zone === 'headers' ? 'верхний' : 'нижний';
+          for (const p of (hf.paras || [])) {
+            if (!(p.hasPageField || (p.text || '').trim())) continue;
+            const runs = (p.runs || []).filter((r) => (r.text || '').trim());
+            const big = runs.find((r) => r.size && r.size > 14.01);
+            const bold = runs.find((r) => r.bold);
+            if (big) once('big-' + zone, () => ({
+              category: 'pagenum', level: 'warning', blockIndex: null, pageLevel: true,
+              title: 'Крупный колонтитул',
+              detail: `В ${zoneName} колонтитуле размер шрифта ${String(big.size).replace('.', ',')} пт.`,
+              recommend: 'Колонтитул оформляют как обычный текст (Times New Roman 14, без выделения). Крупный колонтитул не нужен.',
+              ref: 'СТУ 7.5–07–2021, п. 7.2',
+            }));
+            if (bold) once('bold-' + zone, () => ({
+              category: 'pagenum', level: 'warning', blockIndex: null, pageLevel: true,
+              title: 'Полужирный колонтитул',
+              detail: `Текст в ${zoneName} колонтитуле выделен полужирным.`,
+              recommend: 'Колонтитул оформляют без выделения полужирным. Такой колонтитул не нужен.',
+              ref: 'СТУ 7.5–07–2021, п. 7.2',
+            }));
+          }
+        }
       }
     }
   }
@@ -1987,19 +2087,20 @@
     const isBlank = (i) => blocks[i] && blocks[i].kind === 'p' && blocks[i].isEmpty;
     const spAfter = (b) => (b && b.spacing && b.spacing.after) || 0;
     const spBefore = (b) => (b && b.spacing && b.spacing.before) || 0;
+    // Абзацы, от которых рисунок отделяют пустой строкой (и наоборот).
+    const TEXT_ROLES = new Set(['body', 'where', 'list', 'manualList', 'heading', 'formula']);
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i]; const role = roles[i];
       // рисунок: перед картинкой и после подписи
       if (b.kind === 'p' && (role.role === 'image')) {
-        const imgHasText = normText((b.text || '').replace(/\uFFFC/g, '')).trim() !== '';
         const prev = blocks[i - 1];
         const prevRole = roles[i - 1] ? roles[i - 1].role : null;
-        if (imgHasText && prev && prev.kind === 'p' && !prev.isEmpty && (prevRole === 'body' || prevRole === 'where') && Math.max(spAfter(prev), spBefore(b)) < 200) add({ category: 'figure', level: 'warning', blockIndex: i, pageRel: [i - 1, i], blankInsert: { at: i, where: 'before' }, title: 'Нет пустой строки перед рисунком', detail: 'Перед рисунком нет пустой строки.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку сверху.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
+        if (prev && prev.kind === 'p' && !prev.isEmpty && TEXT_ROLES.has(prevRole) && Math.max(spAfter(prev), spBefore(b)) < 200) add({ category: 'figure', level: 'error', blockIndex: i, pageRel: [i - 1, i], blankInsert: { at: i, where: 'before' }, title: 'Нет пустой строки перед рисунком', detail: 'Перед рисунком нет пустой строки.', recommend: 'Отделяйте рисунок от текста пустой строкой сверху (Enter).', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
         const cap = (roles[i + 1] && roles[i + 1].role === 'figureCaption') ? i + 1 : null;
         const afterIdx = cap != null ? cap + 1 : i + 1;
         const nx = blocks[afterIdx];
         const nxRole = roles[afterIdx] ? roles[afterIdx].role : null;
-        if (nx && nx.kind === 'p' && !nx.isEmpty && (nxRole === 'body' || nxRole === 'where') && Math.max(spAfter(blocks[afterIdx - 1]), spBefore(nx)) < 200) add({ category: 'figure', level: 'warning', blockIndex: cap != null ? cap : i, pageRel: [afterIdx - 1, afterIdx], blankInsert: { at: afterIdx, where: 'before' }, title: 'Нет пустой строки после рисунка', detail: 'После подписи рисунка сразу идёт текст.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку снизу.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
+        if (nx && nx.kind === 'p' && !nx.isEmpty && TEXT_ROLES.has(nxRole) && Math.max(spAfter(blocks[afterIdx - 1]), spBefore(nx)) < 200) add({ category: 'figure', level: 'error', blockIndex: cap != null ? cap : i, pageRel: [afterIdx - 1, afterIdx], blankInsert: { at: afterIdx, where: 'before' }, title: 'Нет пустой строки после рисунка', detail: 'После подписи рисунка сразу идёт текст.', recommend: 'Отделяйте рисунок от текста пустой строкой снизу (Enter).', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
       }
       // таблица: перед подписью и после таблицы
       if (b.kind === 'table') {

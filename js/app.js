@@ -130,6 +130,7 @@
     $('#fix-btn').style.display = 'none';
     const bb = $('#back-btn'); if (bb) bb.style.display = 'none';
     const rb = $('#report-btn'); if (rb) rb.style.display = 'none';
+    const pb0 = $('#pdf-btn'); if (pb0) pb0.style.display = 'none';
     const tw = $('#toptype-wrap'); if (tw) tw.style.display = 'none';
     renderHistory();
   }
@@ -147,6 +148,7 @@
     $('#fix-btn').style.display = '';
     const bb = $('#back-btn'); if (bb) bb.style.display = '';
     const rb = $('#report-btn'); if (rb) rb.style.display = '';
+    const pb = $('#pdf-btn'); if (pb) pb.style.display = '';
   }
 
   const STEPS = ['Чтение файла', 'Разбор структуры документа', 'Проверка по СТУ 7.5–07–2021', 'Построение развёртки', 'Готово'];
@@ -518,6 +520,28 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }
 
+  // Сохранение развёртки в PDF через печать браузера (печать → «Сохранить как PDF»).
+  function exportPdf() {
+    const pages = Array.from(document.querySelectorAll('.stu-page-wrap'));
+    if (!pages.length) return;
+    const w = window.open('', '_blank');
+    if (!w) { alert('Разрешите всплывающие окна, чтобы сохранить PDF.'); return; }
+    const css = '<link rel="stylesheet" href="' + location.origin + '/css/styles.css">';
+    const printCss = '<style>@page{size:A4;margin:0}html,body{background:#fff;margin:0;padding:0}'
+      + '.stu-page-wrap{margin:0 !important;page-break-after:always;break-after:page}'
+      + '.stu-hrule-row,.stu-vrule{display:none !important}'
+      + '.stu-sheet{box-shadow:none !important;border:none !important}'
+      + '.stu-page-err,.stu-page-warn,.stu-page-info{outline:none !important}'
+      + '.stu-flow{overflow:hidden}'
+      + '</style>';
+    const head = '<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Развёртка</title>' + css + printCss + '</head><body>';
+    w.document.open();
+    w.document.write(head + pages.map((p) => p.outerHTML).join('') + '</body></html>');
+    w.document.close();
+    w.focus();
+    setTimeout(() => { try { w.print(); } catch (e) { } }, 500);
+  }
+
   // ------------------------------------------------------------------ utils
   function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
@@ -610,6 +634,7 @@
     }));
 
     $('#new-btn').addEventListener('click', () => { state.doc = null; state.render = null; state.buffer = null; $('#viewer').innerHTML = ''; showStart(); $('#file-input').click(); });
+    const pdfBtn = $('#pdf-btn'); if (pdfBtn) pdfBtn.addEventListener('click', exportPdf);
 
     // исправление и выгрузка .docx
     $('#fix-btn').addEventListener('click', () => { if (state.buffer) $('#fix-dialog').style.display = 'flex'; });

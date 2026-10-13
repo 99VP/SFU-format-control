@@ -1223,6 +1223,17 @@
       const b = blocks[i];
       if (b.kind !== 'p' || !b.hasDrawing) continue;
       if (roles[i] && (roles[i].role === 'title' || roles[i].role === 'figureCaption')) continue;
+      // Рисунок стоит в одном абзаце с текстом — пустой строки перед рисунком нет.
+      const cleanImg = normText((b.text || '').replace(/\uFFFC/g, ''));
+      if (cleanImg) {
+        add({
+          category: 'figure', level: 'warning', blockIndex: i,
+          title: 'Нет пустой строки перед рисунком',
+          detail: 'Текст и рисунок в одном абзаце, пустой строки перед рисунком нет.',
+          recommend: 'Отделяйте рисунок от текста пустой строкой сверху.',
+          ref: 'СТУ 7.5–07–2021, п. 7.8.1',
+        });
+      }
       let capIdx = -1;
       for (let j = i + 1; j < blocks.length && j <= i + 3; j++) {
         if (blocks[j].kind !== 'p') break;
@@ -1952,10 +1963,10 @@
       const b = blocks[i]; const role = roles[i];
       // рисунок: перед картинкой и после подписи
       if (b.kind === 'p' && (role.role === 'image')) {
-        const anchoredImg = (b.runs || []).some((r) => (r.parts || []).some((pp) => pp.type === 'drawing' && pp.anchor));
+        const imgHasText = normText((b.text || '').replace(/\uFFFC/g, '')).trim() !== '';
         const prev = blocks[i - 1];
         const prevRole = roles[i - 1] ? roles[i - 1].role : null;
-        if (prev && prev.kind === 'p' && !prev.isEmpty && (prevRole === 'body' || prevRole === 'where') && Math.max(spAfter(prev), spBefore(b)) < 200 && !anchoredImg) add({ category: 'figure', level: 'warning', blockIndex: i, pageRel: [i - 1, i], blankInsert: { at: i, where: 'before' }, title: 'Нет пустой строки перед рисунком', detail: 'Перед рисунком нет пустой строки.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку сверху.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
+        if (imgHasText && prev && prev.kind === 'p' && !prev.isEmpty && (prevRole === 'body' || prevRole === 'where') && Math.max(spAfter(prev), spBefore(b)) < 200) add({ category: 'figure', level: 'warning', blockIndex: i, pageRel: [i - 1, i], blankInsert: { at: i, where: 'before' }, title: 'Нет пустой строки перед рисунком', detail: 'Перед рисунком нет пустой строки.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку сверху.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
         const cap = (roles[i + 1] && roles[i + 1].role === 'figureCaption') ? i + 1 : null;
         const afterIdx = cap != null ? cap + 1 : i + 1;
         const nx = blocks[afterIdx];

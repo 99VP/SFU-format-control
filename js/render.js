@@ -165,6 +165,8 @@
       if (wpx) img.style.width = wpx + 'px';
       else img.style.maxWidth = limit + 'px';
       if (hpx) img.style.height = hpx + 'px';
+      // якорь: Word размещает плавающий рисунок ниже — добавляем отступ сверху
+      if (part.anchor && !floating && part.offV != null && part.offV > 6) img.style.marginTop = Math.round(part.offV) + 'px';
       if (floating) {
         img.style.position = 'absolute';
         img.style.left = Math.max(0, part.offH != null ? part.offH : 0) + 'px';

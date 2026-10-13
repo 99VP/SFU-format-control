@@ -306,13 +306,17 @@
       m.className = 'stu-listmark';
       const mk = (String(marker).replace(/\s+$/, '').trim()) || '\u2013';
       m.style.whiteSpace = 'pre';
-      m.textContent = mk + '\u00a0';
+      m.style.display = 'inline-block';
+      m.style.width = '1.5em';
+      m.style.textAlign = 'left';
+      m.style.marginRight = '0.35em';
+      m.textContent = mk;
       styleSpan(m, firstRun, blockIndex, -1, ctx);
       m.style.fontFamily = FONT_STACK;   // маркер рисуем обычным шрифтом, без «квадратиков»
       const mkLvl = ctx.markerMarks[blockIndex];
       if (mkLvl) { m.classList.add(LEVEL_CLASS[mkLvl.level]); if (mkLvl.id) m.setAttribute('data-find', mkLvl.id); }
       container.appendChild(m);
-      cursor.x += measure(mk + '\u00a0', firstRun);
+      cursor.x += PT((firstRun.size || 14)) * 1.85;
     }
     // Сегменты по табуляторам; позиции считаем абсолютно (как Word), затем
     // сдвигаем всю строку в соответствии с выравниванием абзаца.

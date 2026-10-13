@@ -1347,15 +1347,15 @@
         recommend: 'В русском тексте тире между словами отделяют пробелами.',
         ref: 'Правила русской типографики',
       });
-      // Двойные пробелы (подсвечиваем сами пробелы)
+      // Двойные пробелы (подсвечиваем сами пробелы) — это ошибка набора, не признак ИИ
       if (/[^ ] {2,}\S/.test(text)) add({
-        category: 'chars', level: 'info', ai: true, blockIndex: i, chars: spaceRanges(b),
+        category: 'chars', level: 'info', ai: false, blockIndex: i, chars: spaceRanges(b),
         title: 'Двойные пробелы', detail: 'В тексте подряд идут несколько пробелов.',
         recommend: 'Оставьте один пробел.', ref: 'СТУ 7.5–07–2021, п. 7.3.1',
       });
       // Пробел перед знаком препинания (кроме двоеточия – оно используется в библиографии)
       if (/\S\s+[,.;!?](?=\s|$)/.test(text)) add({
-        category: 'chars', level: 'warning', ai: true, blockIndex: i, chars: spaceBeforePunctRanges(b),
+        category: 'chars', level: 'warning', ai: false, blockIndex: i, chars: spaceBeforePunctRanges(b),
         title: 'Пробел перед знаком препинания', detail: 'Перед знаком препинания стоит пробел.',
         recommend: 'Уберите пробел перед знаком препинания.', ref: 'СТУ 7.5–07–2021, п. 7.3.1',
       });
@@ -1501,13 +1501,29 @@
     'в рамках', 'является', 'позволяет', 'обеспечивает', 'данный', 'данная', 'данные', 'также', 'однако'];
 
   // Диапазоны строки внутри прогонов (для точечной подсветки фразы).
+  // Ищем фразу по склейке прогонов, поэтому подсветка находится, даже если
+  // фраза разбита на несколько прогонов.
   function phraseRanges(block, phrase) {
-    const res = []; const needle = phrase.toLowerCase();
-    for (let ri = 0; ri < (block.runs || []).length; ri++) {
-      const run = block.runs[ri];
+    const needle = String(phrase || '').toLowerCase();
+    if (!needle) return [];
+    const runs = block.runs || [];
+    let full = ''; const map = [];
+    for (let ri = 0; ri < runs.length; ri++) {
+      const run = runs[ri];
       if (!(run.parts && run.parts.length === 1 && run.parts[0].type === 'text')) continue;
-      const t = (run.text || '').toLowerCase(); let idx = t.indexOf(needle);
-      while (idx >= 0) { res.push({ runIndex: ri, ranges: [[idx, idx + needle.length]] }); idx = t.indexOf(needle, idx + needle.length); }
+      const t = (run.text || '').toLowerCase();
+      if (!t) continue;
+      map.push({ ri, start: full.length, len: t.length });
+      full += t;
+    }
+    const res = []; let idx = full.indexOf(needle);
+    while (idx >= 0) {
+      const end = idx + needle.length;
+      for (const m of map) {
+        const a = Math.max(idx, m.start), b = Math.min(end, m.start + m.len);
+        if (b > a) res.push({ runIndex: m.ri, ranges: [[a - m.start, b - m.start]] });
+      }
+      idx = full.indexOf(needle, idx + needle.length);
     }
     return res;
   }

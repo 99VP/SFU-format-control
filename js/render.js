@@ -277,6 +277,14 @@
 
   function renderRuns(container, p, blockIndex, ctx) {
     ctx._curPara = p;
+    const role = ctx.roles && ctx.roles[blockIndex] ? ctx.roles[blockIndex].role : null;
+    // Подпись рисунка/таблицы, идущая в одном абзаце с изображением: сначала рисунок, потом подпись.
+    if ((role === 'figureCaption' || role === 'tableCaption') && p.hasDrawing) {
+      for (const r of p.runs || []) for (const pp of (r.parts || [])) {
+        if (pp.type === 'drawing') { pp._block = true; appendDrawing(container, pp, ctx, blockIndex); }
+      }
+      ctx._skipDraw = true;
+    }
     const cursor = { x: 0 };
     const marker = ctx.markers[blockIndex];
     if (marker) {
@@ -349,6 +357,7 @@
       else { if (hasText) part._block = true; appendDrawing(container, part, ctx, blockIndex); }
     }
     ctx._defer = null;
+    ctx._skipDraw = false;
   }
 
   function segWidth(seg) {
@@ -389,6 +398,7 @@
     } else if (part.type === 'break') {
       container.appendChild(document.createElement('br')); cursor.x = 0;
     } else if (part.type === 'drawing') {
+      if (ctx._skipDraw) return;
       if (ctx._defer) ctx._defer.push(part);
       else appendDrawing(container, part, ctx, blockIndex);
     }

@@ -769,6 +769,7 @@
     checkTables(doc, blocks, roles, add);
     checkBlankLines(blocks, roles, add);
     checkDoubleEnter(blocks, titleEnd, add);
+    checkListNumbering(blocks, roles, add);
 
     // =========================================================== Иллюстрации
     checkFigures(blocks, roles, add);
@@ -1216,7 +1217,7 @@
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i];
       if (b.kind !== 'p' || !b.hasDrawing) continue;
-      if (roles[i] && roles[i].role === 'title') continue;
+      if (roles[i] && (roles[i].role === 'title' || roles[i].role === 'figureCaption')) continue;
       let capIdx = -1;
       for (let j = i + 1; j < blocks.length && j <= i + 3; j++) {
         if (blocks[j].kind !== 'p') break;
@@ -1251,12 +1252,13 @@
       const b = blocks[i];
       const t = normText(b.text);
       const m = t.match(/^Рисунок\s+([А-ЯA-Z0-9.\-]+)\s*(–|-|—)\s*(.*)$/i);
+      if (m && m[2] === '-') add({ category: 'figure', level: 'warning', blockIndex: i, title: 'Тире в подписи рисунка', detail: 'В подписи использован дефис вместо тире.', recommend: 'Номер и наименование рисунка разделяйте тире «–».', ref: 'СТУ 7.5–07–2021, п. 7.8.3' });
       if (b.jc !== 'center') add({ category: 'figure', level: 'error', blockIndex: i, title: 'Подпись рисунка не по центру', detail: `Подпись «${t}» выровнена не по центру.`, recommend: 'Слово «Рисунок», номер и наименование печатайте по центру.', ref: 'СТУ 7.5–07–2021, п. 7.8.3' });
       const runs = (b.runs || []).filter((x) => normText(x.text));
       if (runs.length && runs.some((x) => Math.abs((x.size || 14) - 14) > 0.01)) add({ category: 'figure', level: 'warning', blockIndex: i, title: 'Размер шрифта подписи рисунка', detail: 'Подпись рисунка набрана не 14 размером.', recommend: 'Слово «Рисунок», номер и наименование печатайте Times New Roman 14.', ref: 'СТУ 7.5–07–2021, п. 7.8.3' });
       if (m) {
         const num = m[1];
-        captionNums.push(num);
+        captionNums.push({ num: num, index: i });
         const refRe = new RegExp('рис(?:\\.|унок|унки|унка)?\\D{0,12}' + num.replace('.', '\\.'), 'i');
         if (!refRe.test(allText)) add({ category: 'figure', level: 'warning', blockIndex: i, title: 'Нет ссылки на рисунок в тексте', detail: `В тексте нет ссылки на рисунок ${num}.`, recommend: 'Приводите ссылки на иллюстрации в тексте, например «в соответствии с рисунком ' + num + '».', ref: 'СТУ 7.5–07–2021, п. 7.8.7' });
         else {
@@ -1277,21 +1279,21 @@
   // Проверка последовательности номеров подписей (1, 2, 3 … или 2.1, 2.2 …).
   function checkCaptionSequence(nums, category, what, add) {
     const counters = {};
-    let prev = null;
-    let broken = false;
-    for (const num of nums) {
+    let brokenAt = null, brokenNum = null, expected = null;
+    for (const item of nums) {
+      const num = (item && item.num != null) ? item.num : item;
+      const idx = (item && item.index != null) ? item.index : null;
       const parts = num.split('.').map(Number);
       const parent = parts.slice(0, -1).join('.');
-      const expected = (counters[parent] || 0) + 1;
-      if (parts[parts.length - 1] !== expected) broken = true;
+      const exp = (counters[parent] || 0) + 1;
+      if (parts[parts.length - 1] !== exp && brokenAt == null) { brokenAt = idx; brokenNum = num; expected = parent ? (parent + '.' + exp) : String(exp); }
       counters[parent] = parts[parts.length - 1];
-      prev = num;
     }
-    if (broken) add({
-      category, level: 'warning', blockIndex: null,
+    if (brokenAt != null) add({
+      category, level: 'warning', blockIndex: brokenAt,
       title: 'Нарушена нумерация ' + what,
-      detail: `Номера подписей идут не по порядку: ${nums.join(', ')}.`,
-      recommend: 'Нумеруйте иллюстрации (таблицы) сквозной нумерацией арабскими цифрами по порядку.',
+      detail: `После порядка номеров идёт «${brokenNum}», а ожидается «${expected}».`,
+      recommend: 'Нумеруйте по порядку: при сквозной нумерации 1, 2, 3…, при нумерации по разделу 5.1, 5.2… (и 5.1.1 для подпунктов).',
       ref: 'СТУ 7.5–07–2021, п. 7.8.2',
     });
   }
@@ -1901,6 +1903,25 @@
     }
   }
 
+  // Последовательность номеров в нумерованных перечислениях (1., 2., 3.).
+  function checkListNumbering(blocks, roles, add) {
+    let prev = null;
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i]; if (b.kind !== 'p') continue;
+      const r = roles[i];
+      if (!r || r.role !== 'manualList') { prev = null; continue; }
+      const m = normText(b.text).match(/^(\d{1,3})[.)]\s/);
+      if (!m) { prev = null; continue; }
+      const n = +m[1];
+      if (prev == null) {
+        if (n !== 1) add({ category: 'list', level: 'warning', blockIndex: i, title: 'Нумерация списка не с 1', detail: `Список начинается с «${n}», а должен с «1».`, recommend: 'Нумеруйте позиции по порядку, начиная с 1.', ref: 'СТУ 7.5–07–2021, п. 7.4.3' });
+      } else if (n !== prev + 1) {
+        add({ category: 'list', level: 'warning', blockIndex: i, title: 'Нарушена нумерация списка', detail: `После «${prev}» идёт «${n}», а должно быть «${prev + 1}».`, recommend: 'Нумеруйте позиции по порядку, без пропусков.', ref: 'СТУ 7.5–07–2021, п. 7.4.3' });
+      }
+      prev = n;
+    }
+  }
+
   function checkBlankLines(blocks, roles, add) {
     const isBlank = (i) => blocks[i] && blocks[i].kind === 'p' && blocks[i].isEmpty;
     const spAfter = (b) => (b && b.spacing && b.spacing.after) || 0;
@@ -1911,11 +1932,13 @@
       if (b.kind === 'p' && (role.role === 'image')) {
         const anchoredImg = (b.runs || []).some((r) => (r.parts || []).some((pp) => pp.type === 'drawing' && pp.anchor));
         const prev = blocks[i - 1];
-        if (prev && prev.kind === 'p' && !prev.isEmpty && Math.max(spAfter(prev), spBefore(b)) < 200 && !anchoredImg) add({ category: 'figure', level: 'warning', blockIndex: i, pageRel: [i - 1, i], blankInsert: { at: i, where: 'before' }, title: 'Нет пустой строки перед рисунком', detail: 'Перед рисунком нет пустой строки.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку сверху.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
+        const prevRole = roles[i - 1] ? roles[i - 1].role : null;
+        if (prev && prev.kind === 'p' && !prev.isEmpty && (prevRole === 'body' || prevRole === 'where') && Math.max(spAfter(prev), spBefore(b)) < 200 && !anchoredImg) add({ category: 'figure', level: 'warning', blockIndex: i, pageRel: [i - 1, i], blankInsert: { at: i, where: 'before' }, title: 'Нет пустой строки перед рисунком', detail: 'Перед рисунком нет пустой строки.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку сверху.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
         const cap = (roles[i + 1] && roles[i + 1].role === 'figureCaption') ? i + 1 : null;
         const afterIdx = cap != null ? cap + 1 : i + 1;
         const nx = blocks[afterIdx];
-        if (nx && nx.kind === 'p' && !nx.isEmpty && Math.max(spAfter(blocks[afterIdx - 1]), spBefore(nx)) < 200) add({ category: 'figure', level: 'warning', blockIndex: cap != null ? cap : i, pageRel: [afterIdx - 1, afterIdx], blankInsert: { at: afterIdx, where: 'before' }, title: 'Нет пустой строки после рисунка', detail: 'После подписи рисунка сразу идёт текст.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку снизу.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
+        const nxRole = roles[afterIdx] ? roles[afterIdx].role : null;
+        if (nx && nx.kind === 'p' && !nx.isEmpty && (nxRole === 'body' || nxRole === 'where') && Math.max(spAfter(blocks[afterIdx - 1]), spBefore(nx)) < 200) add({ category: 'figure', level: 'warning', blockIndex: cap != null ? cap : i, pageRel: [afterIdx - 1, afterIdx], blankInsert: { at: afterIdx, where: 'before' }, title: 'Нет пустой строки после рисунка', detail: 'После подписи рисунка сразу идёт текст.', recommend: 'Отделяйте рисунок от текста интервалом в одну строку снизу.', ref: 'СТУ 7.5–07–2021, п. 7.8.1' });
       }
       // таблица: перед подписью и после таблицы
       if (b.kind === 'table') {

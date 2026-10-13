@@ -1253,11 +1253,13 @@
     for (let i = 0; i < blocks.length; i++) {
       if (roles[i].role !== 'figureCaption') continue;
       const b = blocks[i];
-      const t = normText(b.text);
+      const t = normText(b.text).replace(/\uFFFC/g, '').trim();
       const m = t.match(/^Рисунок\s+([А-ЯA-Z0-9.\-]+)\s*(–|-|—)\s*(.*)$/i);
       if (m && m[2] === '-') {
-        const rawC = b.text || ''; const dm = rawC.match(/\s[-]\s/);
-        const di = dm ? dm.index + dm[0].indexOf('-') : -1;
+        const rawAll = b.text || '';
+        const mRaw = rawAll.match(/Рисунок\s+\S+\s*[-–—]\s*/i);
+        let di = -1;
+        if (mRaw) { const rel = mRaw[0].search(/[-–—]/); if (rel >= 0) di = mRaw.index + rel; }
         add({ category: 'figure', level: 'warning', blockIndex: i, chars: di >= 0 ? rangeAt(b, di, di + 1) : undefined, title: 'Тире в подписи рисунка', detail: 'В подписи использован дефис вместо тире.', recommend: 'Номер и наименование рисунка разделяйте тире «–».', ref: 'СТУ 7.5–07–2021, п. 7.8.3' });
       }
       if (b.jc !== 'center') add({ category: 'figure', level: 'error', blockIndex: i, title: 'Подпись рисунка не по центру', detail: `Подпись «${t}» выровнена не по центру.`, recommend: 'Слово «Рисунок», номер и наименование печатайте по центру.', ref: 'СТУ 7.5–07–2021, п. 7.8.3' });

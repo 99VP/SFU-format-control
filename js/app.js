@@ -166,6 +166,13 @@
   // ------------------------------------------------------------------ file
   async function handleFile(file) {
     if (!file) return;
+    if (/\.pdf$/i.test(file.name)) {
+      state.fileName = file.name;
+      showProcessing(file.name);
+      const buf = await file.arrayBuffer();
+      await handlePdf(file.name, buf);
+      return;
+    }
     if (/\.doc$/i.test(file.name)) {
       if (await tryConvertDoc(file)) return;
       alert('Формат .doc не читается в браузере.\n' +
@@ -202,6 +209,49 @@
       return true;
     } catch (e) {
       return false;
+    }
+  }
+
+  // Просмотр PDF-файла: страницы как картинки (pdf.js).
+  async function handlePdf(name, buf) {
+    try {
+      if (!window.pdfjsLib) { alert('PDF-модуль не загружен.'); showStart(); return; }
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
+      const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+      const viewer = $('#viewer'); viewer.innerHTML = '';
+      const pages = [];
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+        const vp = page.getViewport({ scale: 2 });
+        const canvas = document.createElement('canvas'); canvas.width = vp.width; canvas.height = vp.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+        const vp1 = page.getViewport({ scale: 1 });
+        const wrap = document.createElement('div'); wrap.className = 'stu-page-wrap'; wrap.setAttribute('data-page', p - 1);
+        const sheet = document.createElement('div'); sheet.className = 'stu-sheet stu-pdf-page';
+        sheet.style.width = (vp1.width * 96 / 72) + 'px';
+        sheet.style.height = (vp1.height * 96 / 72) + 'px';
+        const img = document.createElement('img'); img.src = canvas.toDataURL('image/jpeg', 0.9);
+        img.style.width = '100%'; img.style.height = '100%'; img.style.display = 'block';
+        sheet.appendChild(img); wrap.appendChild(sheet); viewer.appendChild(wrap);
+        pages.push({ index: p - 1, wrap, sheet, blocks: [] });
+      }
+      state.doc = null; state.roles = null; state.findings = []; state.buffer = null; state.titleEnd = 0;
+      state.render = { pages: pages, pageForBlock: {}, blockEls: {}, findingsByPage: new Map() };
+      showWorkspace();
+      $('#topfile').textContent = name;
+      const tw = $('#toptype-wrap'); if (tw) tw.style.display = 'none';
+      const fb = $('#fix-btn'); if (fb) fb.style.display = 'none';
+      const fm = $('#file-meta');
+      const g0 = pages[0] ? { w: pages[0].sheet.style.width, h: pages[0].sheet.style.height } : null;
+      if (fm) fm.innerHTML = '<div class="fm-name">' + escapeHtml(name) + '</div>' +
+        '<div class="fm-sub">PDF · листов: ' + pdf.numPages + '</div>' +
+        '<div class="fm-sub">Просмотр PDF. Проверки по СТУ выполняются для файлов Word.</div>';
+      buildFindings();
+      buildPages();
+      wireViewerScroll();
+    } catch (e) {
+      alert('Не удалось прочитать PDF.\n' + (e && e.message ? e.message : e));
+      showStart();
     }
   }
 
@@ -520,26 +570,32 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }
 
-  // Сохранение развёртки в PDF через печать браузера (печать → «Сохранить как PDF»).
-  function exportPdf() {
-    const pages = Array.from(document.querySelectorAll('.stu-page-wrap'));
-    if (!pages.length) return;
-    const w = window.open('', '_blank');
-    if (!w) { alert('Разрешите всплывающие окна, чтобы сохранить PDF.'); return; }
-    const css = '<link rel="stylesheet" href="' + location.origin + '/css/styles.css">';
-    const printCss = '<style>@page{size:A4;margin:0}html,body{background:#fff;margin:0;padding:0}'
-      + '.stu-page-wrap{margin:0 !important;page-break-after:always;break-after:page}'
-      + '.stu-hrule-row,.stu-vrule{display:none !important}'
-      + '.stu-sheet{box-shadow:none !important;border:none !important}'
-      + '.stu-page-err,.stu-page-warn,.stu-page-info{outline:none !important}'
-      + '.stu-flow{overflow:hidden}'
-      + '</style>';
-    const head = '<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Развёртка</title>' + css + printCss + '</head><body>';
-    w.document.open();
-    w.document.write(head + pages.map((p) => p.outerHTML).join('') + '</body></html>');
-    w.document.close();
-    w.focus();
-    setTimeout(() => { try { w.print(); } catch (e) { } }, 500);
+  // Сохранение развёртки в pdf-файл (готовый файл через html2canvas + jsPDF).
+  async function exportPdf() {
+    if (!(window.html2canvas && window.jspdf)) { alert('PDF-модуль не загружен.'); return; }
+    const sheets = Array.from(document.querySelectorAll('.stu-page-wrap .stu-sheet'));
+    if (!sheets.length) return;
+    const btn = $('#pdf-btn'); const old = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'PDF…'; }
+    try {
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait' });
+      const pw = pdf.internal.pageSize.getWidth();
+      const ph = pdf.internal.pageSize.getHeight();
+      for (let i = 0; i < sheets.length; i++) {
+        const canvas = await window.html2canvas(sheets[i], { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+        const img = canvas.toDataURL('image/jpeg', 0.92);
+        const ratio = Math.min(pw / canvas.width, ph / canvas.height);
+        const w = canvas.width * ratio, h = canvas.height * ratio;
+        if (i > 0) pdf.addPage();
+        pdf.addImage(img, 'JPEG', (pw - w) / 2, (ph - h) / 2, w, h);
+      }
+      pdf.save((state.fileName || 'документ').replace(/\.(docx|pdf)$/i, '') + ' (развёртка).pdf');
+    } catch (e) {
+      alert('Не удалось собрать PDF.\n' + (e && e.message ? e.message : e));
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = old; }
+    }
   }
 
   // ------------------------------------------------------------------ utils

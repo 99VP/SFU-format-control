@@ -59,8 +59,8 @@
             <span class="types-label">Вид документа</span>
           </div>
           <button class="btn primary" id="pick-btn">Выбрать файл Word</button>
-          <div class="drop-hint-inline">Форматы .docx и .doc</div>
-          <input type="file" id="file-input" accept=".docx,.doc" hidden />
+          <div class="drop-hint-inline">Форматы .docx, .doc и .pdf</div>
+          <input type="file" id="file-input" accept=".docx,.doc,.pdf" hidden />
           </div>
           <div class="history-card" id="history-card" style="display:none">
             <div class="history-head">
@@ -167,6 +167,9 @@
   <div class="drop-overlay" id="drop-overlay" style="display:none"><span>Отпустите файл, чтобы проверить</span></div>
 
   <script src="vendor/fflate.min.js"></script>
+  <script src="vendor/pdf.min.js"></script>
+  <script src="vendor/html2canvas.min.js"></script>
+  <script src="vendor/jspdf.umd.min.js"></script>
   <script src="js/docx.js"></script>
   <script src="js/rules.js"></script>
   <script src="js/render.js"></script>

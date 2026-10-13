@@ -90,6 +90,7 @@
     if (/\u25E6/.test(m)) return 'маленький кружок';
     if (/[*]/.test(m)) return 'звёздочка';
     if (/\u00b7/.test(m)) return 'средняя точка';
+    if (/[\uE000-\uF8FF]/.test(m)) return 'значок Word (в тексте — картинка-маркер), нужно тире';
     if (/[\d]/.test(m)) return 'цифра';
     if (/[–—\-]/.test(m)) return 'дефис';
     if (/[A-Za-zА-Яа-я]/.test(m)) return 'буква «' + m + '»';
@@ -659,7 +660,7 @@
               recommend: 'Перед каждой позицией перечисления ставьте дефис. Буквы со скобкой допустимы только при ссылках в тексте.',
               ref: 'СТУ 7.5–07–2021, п. 7.4.3',
             });
-          } else if (lvl.fmt === 'bullet' && lvl.lvlText && /[•◦o\u25aa\u25cf\u25e6\u00b7\uf0a7\uf0b7]/.test(lvl.lvlText)) {
+          } else if (lvl.fmt === 'bullet' && lvl.lvlText && !/^[-–]$/.test(lvl.lvlText.trim())) {
             add({
               category: 'list', level: 'warning', blockIndex: i, isMarker: true,
               title: 'Маркер перечисления не дефис',

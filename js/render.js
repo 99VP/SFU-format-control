@@ -85,7 +85,7 @@
     if (ch === 'o' || ch === '-') return '\u2013';
     if (ch === '\u2013' || ch === '\u2014') return '\u2013';
     if (/[\u2022\u25CF\u25AA\u25E6\u00B7\u25A0\u25AB\u25C6]/.test(ch)) return '\u2022';
-    if (/[\uE000-\uF8FF]/.test(ch)) return '\u2013';
+    if (/[\uE000-\uF8FF]/.test(ch)) return '\u25A1';   // значок Word (книжка и т.п.) — показываем рамкой
     return ch;
   }
   function formatLevel(lvlText, numId, counters) {
@@ -295,6 +295,8 @@
       m.className = 'stu-listmark';
       const mk = String(marker).replace(/\s+$/, '');
       m.style.whiteSpace = 'pre';
+      m.style.display = 'inline-block';
+      m.style.minWidth = '1.7em';
       m.textContent = mk + '\u00a0';
       styleSpan(m, firstRun, blockIndex, -1, ctx);
       m.style.fontFamily = FONT_STACK;   // маркер рисуем обычным шрифтом, без «квадратиков»

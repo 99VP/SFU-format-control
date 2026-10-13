@@ -475,7 +475,7 @@
       const all = [];
       if (b.kind === 'p' && b.runs) for (const r of b.runs) for (const pp of (r.parts || [])) all.push(pp);
       while (all.length && all[all.length - 1].type === 'text' && all[all.length - 1].text === '') all.pop();
-      const trailing = all.length && all[all.length - 1].type === 'pagebreak';
+      const trailing = all.some((x) => x.type === 'pagebreak');
       items.push({ indices: [i], forcedBefore: forcedPageStarts.has(i) || !!b.pageBreakBefore, forcedAfter: !!trailing, sectionStart: sectionStarts.has(i) });
     }
     return items;

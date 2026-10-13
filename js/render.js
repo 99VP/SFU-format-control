@@ -177,7 +177,7 @@
       sp.textContent = part.txbx;
       if (part.txbxSize) sp.style.fontSize = PT(part.txbxSize) + 'px';
       sp.style.lineHeight = '1.15';
-      if (part.txbxBorder === false) { sp.style.border = 'none'; sp.style.padding = '0'; }
+      sp.title = 'Надпись (фигура) Word. Пунктирная рамка условна: точное положение и рамка могут не совпадать с оригиналом.';
       if (floating) {
         sp.style.position = 'absolute';
         sp.style.left = Math.max(0, part.offH != null ? part.offH : 0) + 'px';

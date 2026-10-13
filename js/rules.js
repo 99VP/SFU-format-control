@@ -198,7 +198,11 @@
         numberedHeadings.push({ index: i, number: num, level: lvlFromNumber(num), title: rest });
         continue;
       }
-      if (looksHeading && !m) { roles[i] = { role: 'heading', number: null, level: 0, title: t }; continue; }
+      if (looksHeading && !m) { roles[i] = { role: 'heading', number: null, level: 1, title: t }; continue; }
+      // ненумерованный раздел: полужирная короткая строка без точки в конце
+      if (allBoldPara(b) && t.length < 140 && !/[.;:!?]$/.test(t) && t.split(/\s+/).length <= 12 && !/^\s*[-–—•]/.test(t)) {
+        roles[i] = { role: 'heading', number: null, level: 1, title: t }; continue;
+      }
       // формула
       if (looksLikeFormula(t)) { roles[i] = { role: 'formula' }; continue; }
       if (/^где\s+/i.test(t)) { roles[i] = { role: 'where' }; continue; }
@@ -907,21 +911,32 @@
       if (r.role === 'title' || r.role === 'toc') continue;
       const text = b.text || '';
       const urls = urlSpans(text);
-      const re = /\[(\d{1,4}(?:\s*[;,][^\]]*)?)\]\s*\./g;
-      let m; const ranges = [];
+      const re = /\[(\d{1,4}(?:\s*[;,][^\]]*)?)\]/g;
+      let m;
       while ((m = re.exec(text))) {
         if (inSpans(m.index, urls)) continue;
-        ranges.push([m.index, m.index + m[0].length]);
+        const end = m.index + m[0].length;
+        const before = text[m.index - 1] || '';
+        const after = text.slice(end);
+        const atEnd = /^[ \t\u00a0]*$/.test(after);
+        if (atEnd) {
+          // в конце абзаца точка должна стоять до скобок и без пробела после
+          if (after.length) add({
+            category: 'sources', level: 'warning', blockIndex: i, chars: rangeAt(b, end, text.length),
+            title: 'Пробел после отсылки к источнику',
+            detail: 'После квадратных скобок со ссылкой стоит пробел.',
+            recommend: 'Уберите пробел после ссылки.',
+            ref: 'СТУ 7.5–07–2021, п. 7.9.4',
+          });
+          if (before !== '.') add({
+            category: 'sources', level: 'warning', blockIndex: i, chars: rangeAt(b, m.index, end),
+            title: 'Точка после отсылки к источнику',
+            detail: 'В конце абзаца точка должна стоять до квадратных скобок.',
+            recommend: 'Ставьте точку до квадратных скобок, без пробела: «текст.[7]».',
+            ref: 'СТУ 7.5–07–2021, п. 7.9.4',
+          });
+        }
       }
-      if (!ranges.length) continue;
-      let chars = []; for (const [s, e] of ranges) chars = chars.concat(rangeAt(b, s, e));
-      add({
-        category: 'sources', level: 'warning', blockIndex: i, chars,
-        title: 'Точка после отсылки к источнику',
-        detail: 'В отсылке к источнику точка стоит после квадратных скобок.',
-        recommend: 'Ставьте точку до квадратных скобок, без пробела: «текст.[7]».',
-        ref: 'СТУ 7.5–07–2021, п. 7.9.4',
-      });
     }
   }
 
@@ -951,7 +966,7 @@
       } else if (!endsPeriod) {
         const mLast = t.match(/([А-Яа-яЁёA-Za-z0-9]+)\s*$/);
         let chars;
-        if (mLast) { const idx = (blocks[i].text || '').lastIndexOf(mLast[1]); if (idx >= 0) chars = rangeAt(blocks[i], idx, idx + mLast[1].length); }
+        if (mLast) { const idx = (blocks[i].text || '').lastIndexOf(mLast[1]); if (idx >= 0) chars = rangeAt(blocks[i], idx, (blocks[i].text || '').length); }
         add({
           category: 'punct', level: 'error', blockIndex: i, chars: chars,
           title: 'В конце абзаца нет точки',
@@ -1075,6 +1090,35 @@
       detail: 'Не включён особый колонтитул первой страницы.',
       recommend: 'На титульном листе номер страницы не проставляют (но он входит в общую нумерацию).',
       ref: 'СТУ 7.5–07–2021, п. 7.2.2',
+    });
+    // Колонтитулы: TNR 14, без интервалов, единый вид по документу.
+    let badFoot = false; const footKinds = new Set();
+    for (const s of doc.sections) {
+      const f = s.footers || {};
+      for (const k of ['default', 'first', 'even']) {
+        const ft = f[k]; if (!ft) continue;
+        for (const p of (ft.paras || [])) {
+          if (!(p.hasPageField || (p.text || '').trim())) continue;
+          if (p.font && !isTimesNewRoman(p.font)) badFoot = true;
+          if (p.size && Math.abs(p.size - 14) > 0.01) badFoot = true;
+          if (p.spacing && ((p.spacing.before || 0) > 0 || (p.spacing.after || 0) > 0)) badFoot = true;
+          footKinds.add(((p.text || '').trim() || '№') + '|' + (p.size || 14) + '|' + (p.font || ''));
+        }
+      }
+    }
+    if (badFoot) add({
+      category: 'pagenum', level: 'warning', blockIndex: null, pageLevel: true,
+      title: 'Оформление колонтитула',
+      detail: 'В колонтитуле шрифт или размер не Times New Roman 14 либо заданы интервалы.',
+      recommend: 'Оформляйте колонтитул как обычный текст: Times New Roman 14, без интервалов.',
+      ref: 'СТУ 7.5–07–2021, п. 7.2',
+    });
+    if (footKinds.size > 1) add({
+      category: 'pagenum', level: 'warning', blockIndex: null, pageLevel: true,
+      title: 'Разные колонтитулы',
+      detail: 'Колонтитулы в документе различаются между собой.',
+      recommend: 'Приведите колонтитулы к единому виду по всему документу.',
+      ref: 'СТУ 7.5–07–2021, п. 7.2',
     });
   }
 

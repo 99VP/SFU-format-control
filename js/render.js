@@ -245,6 +245,7 @@
         const sp = makeSpan(slice, run, blockIndex, runIndex, ctx);
         sp.classList.add(LEVEL_CLASS[mk.level] || 'stu-mk-info');
         if (mk.punct) sp.classList.add('stu-mk-punct');
+        if (mk.src) sp.classList.add('stu-mk-src');
         if (mk.ai) sp.classList.add('stu-ai');
         if (mk.id) sp.setAttribute('data-find', mk.id);
         if (/^[\u200B-\u200D\u2060\uFEFF\u00AD]+$/.test(slice)) sp.classList.add('stu-char-marker');
@@ -470,13 +471,17 @@
   function applyBlockMark(el, blockIndex, ctx) {
     const marks = ctx.blockMarks[blockIndex];
     const ai = ctx.aiBlock[blockIndex];
-    if ((!marks || !marks.length) && !ai) return;
+    const src = ctx.blockSrc && ctx.blockSrc[blockIndex];
+    const ind = ctx.indentMark && ctx.indentMark[blockIndex];
+    if ((!marks || !marks.length) && !ai && !src && !ind) return;
     if (marks && marks.length) {
       let worst = 'info';
       for (const lv of marks) if (LEVEL_RANK[lv] > LEVEL_RANK[worst]) worst = lv;
       el.classList.add(LEVEL_CLASS[worst]);
     }
     if (ai) el.classList.add('stu-ai');
+    if (src) el.classList.add('stu-mk-src');
+    if (ind) el.classList.add('stu-indent-line');
     el.classList.add('stu-marked');
     el.setAttribute('data-findings', (marks ? marks.length : 0) + (ai ? 1 : 0));
     if (ctx.blockFind[blockIndex] != null) el.setAttribute('data-find', ctx.blockFind[blockIndex]);
@@ -640,19 +645,21 @@
   // ---------------------------------------------------------------- render
   function renderDocument(doc, roles, findings, viewer) {
     viewer.innerHTML = '';
-    const ctx = { doc, runMarks: {}, blockMarks: {}, charMarks: {}, aiBlock: {}, markerMarks: {}, blockFind: {}, roles, markers: computeMarkers(doc), tabStep: TW((doc.settings && doc.settings.defaultTabStop) || 708) };
+    const ctx = { doc, runMarks: {}, blockMarks: {}, charMarks: {}, aiBlock: {}, markerMarks: {}, blockFind: {}, blockSrc: {}, indentMark: {}, roles, markers: computeMarkers(doc), tabStep: TW((doc.settings && doc.settings.defaultTabStop) || 708) };
     for (const f of findings) {
       if (f.blockIndex == null || f.pageLevel) continue;
       if (ctx.blockFind[f.blockIndex] == null) ctx.blockFind[f.blockIndex] = f.id;
+      if (f.title && /отступ/i.test(f.title)) { ctx.indentMark[f.blockIndex] = true; continue; }
       if (f.chars && f.chars.length) {
         const m = ctx.charMarks[f.blockIndex] = ctx.charMarks[f.blockIndex] || {};
-        for (const c of f.chars) for (const rng of c.ranges) (m[c.runIndex] = m[c.runIndex] || []).push({ start: rng[0], end: rng[1], level: f.level, ai: !!f.ai, punct: f.category === 'punct', id: f.id });
+        for (const c of f.chars) for (const rng of c.ranges) (m[c.runIndex] = m[c.runIndex] || []).push({ start: rng[0], end: rng[1], level: f.level, ai: !!f.ai, punct: f.category === 'punct', src: f.category === 'sources', id: f.id });
       }
       if (f.isMarker) {
         const cur = ctx.markerMarks[f.blockIndex];
         if (!cur || LEVEL_RANK[f.level] > LEVEL_RANK[cur.level]) ctx.markerMarks[f.blockIndex] = { level: f.level, id: f.id };
         continue;
       }
+      if (f.category === 'sources' && !(f.chars && f.chars.length)) ctx.blockSrc[f.blockIndex] = true;
       if (f.blockIndices && f.blockIndices.length) {
         for (const bi of f.blockIndices) (ctx.blockMarks[bi] = ctx.blockMarks[bi] || []).push(f.level);
         continue;

@@ -2043,10 +2043,12 @@
       entries.push({ index: i, num: num, text: t, urls: urls });
     }
     if (seqEntry != null) add({ category: 'sources', level: 'warning', blockIndex: seqEntry, title: 'Нарушена нумерация записей', detail: 'Нумерация библиографических записей не сквозная или нарушена.', recommend: 'Пронумеруйте записи арабскими цифрами сквозной нумерацией.', ref: 'СТУ 7.5–07–2021, п. 7.10.2' });
-    if (indentEntry != null) add({ category: 'sources', level: 'info', blockIndex: indentEntry, title: 'Запись без абзацного отступа', detail: 'Библиографическая запись напечатана без абзацного отступа.', recommend: 'Печатайте библиографические записи с абзацного отступа.', ref: 'СТУ 7.5–07–2021, п. 7.10.2' });
+    if (indentEntry != null) add({ category: 'sources', level: 'info', blockIndex: indentEntry, title: 'Запись без абзацного отступа', detail: 'Библиографическая запись напечатана без абзацного отступа.', recommend: 'Печатайте библиографические записи с абзацного отступа. Пример: «Иванов И.И. Название книги. – Москва : Издательство, 2020. – 250 с.»', ref: 'СТУ 7.5–07–2021, п. 7.10.2' });
+    // Пример оформления записи (как ориентир).
+    add({ category: 'sources', level: 'info', blockIndex: entries.length ? entries[0].index : start, title: 'Пример оформления записи источника', detail: 'Книга: Иванов И.И. Название книги. – Москва : Издательство, 2020. – 250 с. Статья: Петров П.П. Название статьи // Название журнала. – 2020. – № 5. – С. 10–15. Электронный: Название // Сайт. – URL: https://example.ru (дата обращения: 01.01.2026).', recommend: 'Оформляйте все записи единообразно по ГОСТ Р 7.0.100: автор, заглавие, место, издательство, год, объём.', ref: 'СТУ 7.5–07–2021, п. 7.10.2' });
     // В конце библиографической записи ставят точку.
     for (const e of entries) {
-      if (e.text && !/\.$/.test(e.text)) add({ category: 'sources', level: 'warning', blockIndex: e.index, title: 'Нет точки в конце записи источника', detail: `Запись «${e.text.slice(0, 60)}${e.text.length > 60 ? '…' : ''}» не заканчивается точкой.`, recommend: 'Заканчивайте библиографическую запись точкой.', ref: 'СТУ 7.5–07–2021, п. 7.10.2' });
+      if (e.text && !/\.$/.test(e.text)) add({ category: 'sources', level: 'warning', blockIndex: e.index, title: 'Нет точки в конце записи источника', detail: `Запись «${e.text.slice(0, 60)}${e.text.length > 60 ? '…' : ''}» не заканчивается точкой.`, recommend: 'Заканчивайте библиографическую запись точкой. Пример: «… – 250 с.»', ref: 'СТУ 7.5–07–2021, п. 7.10.2' });
     }
     checkBibliographyFormat(entries, start, add);
 
